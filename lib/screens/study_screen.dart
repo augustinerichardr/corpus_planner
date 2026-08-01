@@ -6,52 +6,154 @@ class StudyScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: const Text('Investment & Portfolio Knowledge Hub', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: const Color(0xFF121212),
+        elevation: 0,
+        title: const Text(
+          'Financial Engine Methodology',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            fontSize: 20,
+          ),
+        ),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(16.0),
         children: [
-          const Text('Essential Concepts for Beginner & Systematic Investors', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF00E676))),
-          const SizedBox(height: 8),
-          const Text('Master the core mechanics of compounding, asset allocation, and wealth preservation.', style: TextStyle(color: Colors.white70)),
+          _buildHeaderCard(),
+          const SizedBox(height: 16),
+          _buildMethodologySection(
+            icon: Icons.trending_up,
+            title: '1. Corpus Accumulation & Step-Up SIP',
+            subtitle: 'Compounding with annual investment scaling',
+            content:
+                'The engine computes month-by-month compound growth using the blended portfolio return (R_blended):\n\n'
+                '• Monthly Return (r) = R_blended / 12 / 100\n'
+                '• Every 12 months, the monthly SIP escalates by the Step-Up percentage (S).\n'
+                '• Lump Sum compounds continuously alongside recurring SIP inflows.\n\n'
+                'Blended Return Formula:\n'
+                'R_blended = (Equity % × Equity Return) + (Bond % × Debt Return)',
+          ),
+          const SizedBox(height: 12),
+          _buildMethodologySection(
+            icon: Icons.account_balance_wallet,
+            title: '2. Systematic Withdrawal Plan (SWP)',
+            subtitle: 'Inflation-adjusted post-retirement income',
+            content:
+                'During the withdrawal phase, monthly payouts adjust dynamically for inflation to maintain purchasing power:\n\n'
+                '• Monthly Inflation Rate (i) = Annual Inflation / 12 / 100\n'
+                '• Monthly Withdrawal increases exponentially year-over-year.\n'
+                '• Remaining portfolio continues generating returns at the defensive post-retirement allocation rate.',
+          ),
+          const SizedBox(height: 12),
+          _buildMethodologySection(
+            icon: Icons.pie_chart_outline,
+            title: '3. Asset Allocation & Real Returns',
+            subtitle: 'Equity/Debt split vs. Purchasing Power',
+            content:
+                'Real wealth growth accounts for inflation erosion:\n\n'
+                '• Real Return ≈ Blended Return - Inflation Rate\n'
+                '• Equity provides long-term inflation-beating growth.\n'
+                '• Bonds/Debt reduce volatility during drawdown phases.',
+          ),
+          const SizedBox(height: 12),
+          _buildMethodologySection(
+            icon: Icons.calculate_outlined,
+            title: '4. Reverse Goal Solver',
+            subtitle: 'Target corpus reverse-engineering',
+            content:
+                'The Goal Solver uses an iterative binary search algorithm to calculate the exact initial monthly SIP required to reach a specific financial target given your timeframe, step-up rate, and asset allocation.',
+          ),
           const SizedBox(height: 24),
-          _buildGuideCard(Icons.trending_up, '1. Equity Mutual Funds (Growth Engine)', 'Equity funds pool money to buy shares in publicly traded companies. They carry higher short-term volatility but historically deliver strong long-term yields (12% to 15% p.a.). They serve as the primary growth engine for long-horizon corpus building.'),
-          _buildGuideCard(Icons.shield_outlined, '2. Debt Funds & Bonds (Capital Shield)', 'Debt instruments include government bonds, corporate bonds, and fixed deposits. They provide fixed, predictable interest returns (usually 6% to 8% p.a.) with low volatility, acting as a stabilizing anchor for your overall portfolio.'),
-          _buildGuideCard(Icons.bolt, '3. Step-Up SIP (The Velocity Multiplier)', 'A standard SIP keeps monthly investments fixed. A Step-Up SIP automatically increases your contribution by a set percentage (e.g., 10% or 15% annually) as your career income grows, exponentially accelerating your target corpus timeline.'),
-          _buildGuideCard(Icons.monetization_on_outlined, '4. Inflation & Real Purchasing Power', 'Inflation reduces the goods and services your money can buy over time. A target corpus of ₹1 Crore today will have less purchasing power in 10 or 15 years. Always evaluate your final corpus in "Inflation-Adjusted Real Value" terms.'),
         ],
       ),
     );
   }
 
-  Widget _buildGuideCard(IconData icon, String title, String body) {
+  Widget _buildHeaderCard() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF00E676).withOpacity(0.15),
+            Colors.transparent,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF00E676).withOpacity(0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Row(
+            children: [
+              Icon(Icons.auto_stories, color: Color(0xFF00E676), size: 28),
+              SizedBox(width: 12),
+              Text(
+                'Corpus Planner Guide',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Understand the underlying financial mathematics, inflation adjustments, and algorithms powering your wealth projections.',
+            style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMethodologySection({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String content,
+  }) {
+    return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)),
-            child: Icon(icon, color: const Color(0xFF00E676)),
+      child: ExpansionTile(
+        leading: Icon(icon, color: const Color(0xFF00E676)),
+        iconColor: const Color(0xFF00E676),
+        collapsedIconColor: Colors.white54,
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF00E676))),
-                const SizedBox(height: 6),
-                Text(body, style: const TextStyle(color: Colors.white70, height: 1.4)),
-              ],
+        ),
+        subtitle: Text(
+          subtitle,
+          style: const TextStyle(color: Colors.white38, fontSize: 12),
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          const Divider(color: Colors.white10),
+          const SizedBox(height: 8),
+          Text(
+            content,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              height: 1.5,
             ),
           ),
         ],
