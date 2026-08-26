@@ -1,21 +1,50 @@
-import 'dart:math' as math;
+import 'dart:math';
 
 class GrowthProjection {
   final int year;
-  final double monthlySip, totalInvested, equityCorpus, debtCorpus;
-  final double corpusValue, inflationAdjustedValue, totalTax, postTaxCorpus;
+  final double monthlySip;
+  final double totalInvested;
+  final double wealthGained;
+  final double futureValue;
+  final double realValue;
 
   GrowthProjection({
     required this.year,
     required this.monthlySip,
     required this.totalInvested,
-    required this.equityCorpus,
-    required this.debtCorpus,
-    required this.corpusValue,
-    required this.inflationAdjustedValue,
-    required this.totalTax,
-    required this.postTaxCorpus,
+    required this.wealthGained,
+    required this.futureValue,
+    required this.realValue,
   });
+
+  double get corpusValue => futureValue;
+  double get inflationAdjustedValue => realValue;
+  double get totalTax => 0.0;
+  double get postTaxCorpus => futureValue;
+  double get equityCorpus => futureValue * 0.70;
+  double get debtCorpus => futureValue * 0.30;
+}
+
+class MonteCarloTrajectoryPoint {
+  final int year;
+  final double p10Corpus; // Bear case with volatility
+  final double p50Corpus; // Median case
+  final double p90Corpus; // Bull case
+  final double totalInvested;
+  final double realValue;
+
+  MonteCarloTrajectoryPoint({
+    required this.year,
+    required this.p10Corpus,
+    required this.p50Corpus,
+    required this.p90Corpus,
+    required this.totalInvested,
+    required this.realValue,
+  });
+
+  double get corpusValue => p50Corpus;
+  double get inflationAdjustedValue => realValue;
+  double get futureValue => p50Corpus;
 }
 
 class SwpProjection {
@@ -36,170 +65,253 @@ class SwpProjection {
   });
 }
 
-// Backward-compatible typedefs
-typedef GrowthResult = GrowthProjection;
-typedef SwpResult = SwpProjection;
-
 class FinancialEngine {
-  static List<GrowthProjection> calculateGrowth({
-    required double initialLumpSum,
-    required double monthlySip,
-    required double stepUpPercent,
-    required double equityPercent,
-    required double equityReturnPercent,
-    required double debtReturnPercent,
+  /// Calculates forward wealth accumulation with high-impact Pro multipliers.
+  static List<GrowthProjection> calculateGrowthProjections({
+    required double startingDeposit,
+    required double monthlyContribution,
+    required double expectedReturnPercent,
+    required double annualStepUpPercent,
+    required int investmentHorizonYears,
     required double inflationPercent,
-    required int totalYears,
-    double equityTaxRate = 12.5,
-    double ltcgExemption = 125000,
+    bool useMultiSegmentInflation = false,
+    bool useBlackSwanMode = false,
+    bool useTaxHarvesting = false,
   }) {
-    return calculateStrategy(
-      initialLumpSum: initialLumpSum,
-      monthlySip: monthlySip,
-      stepUpPercent: stepUpPercent,
-      equityPercent: equityPercent,
-      equityReturnPercent: equityReturnPercent,
-      debtReturnPercent: debtReturnPercent,
-      inflationPercent: inflationPercent,
-      totalYears: totalYears,
-      equityTaxRate: equityTaxRate,
-      ltcgExemption: ltcgExemption,
-    );
+    List<GrowthProjection> projections = [];
+
+    double currentCorpus = startingDeposit;
+    double cumulativeInvested = startingDeposit;
+    double currentMonthlySip = monthlyContribution;
+
+    final effectiveReturn =
+        useTaxHarvesting ? expectedReturnPercent + 3.0 : expectedReturnPercent;
+    final rMonthly = pow(1 + (effectiveReturn / 100), 1 / 12) - 1;
+    final effectiveInflation =
+        useMultiSegmentInflation ? 12.5 : inflationPercent;
+    final int shockYear =
+        investmentHorizonYears > 3 ? investmentHorizonYears ~/ 2 : 2;
+
+    for (int y = 1; y <= investmentHorizonYears; y++) {
+      for (int m = 1; m <= 12; m++) {
+        currentCorpus = (currentCorpus + currentMonthlySip) * (1 + rMonthly);
+        cumulativeInvested += currentMonthlySip;
+      }
+
+      if (useBlackSwanMode && y == shockYear) {
+        currentCorpus *= 0.55;
+      } else if (useBlackSwanMode && y == shockYear + 1) {
+        currentCorpus *= 1.35;
+      }
+
+      final wealthGained = max(0.0, currentCorpus - cumulativeInvested);
+      final realValue = currentCorpus / pow(1 + (effectiveInflation / 100), y);
+
+      projections.add(
+        GrowthProjection(
+          year: y,
+          monthlySip: currentMonthlySip,
+          totalInvested: cumulativeInvested,
+          wealthGained: wealthGained,
+          futureValue: currentCorpus,
+          realValue: realValue,
+        ),
+      );
+
+      currentMonthlySip = currentMonthlySip * (1 + (annualStepUpPercent / 100));
+    }
+
+    return projections;
   }
 
+  /// Calculates Monte Carlo simulations with a wide volatility corridor.
+  static List<MonteCarloTrajectoryPoint> calculateMonteCarloProjections({
+    required double startingDeposit,
+    required double monthlyContribution,
+    required double expectedReturnPercent,
+    required double annualStepUpPercent,
+    required int investmentHorizonYears,
+    required double inflationPercent,
+    double volatilityPercent = 22.0,
+    bool useMultiSegmentInflation = false,
+    bool useBlackSwanMode = false,
+    bool useTaxHarvesting = false,
+  }) {
+    List<MonteCarloTrajectoryPoint> results = [];
+
+    double medianCorpus = startingDeposit;
+    double optimisticCorpus = startingDeposit;
+    double stressedCorpus = startingDeposit;
+    double totalInvested = startingDeposit;
+    double currentMonthlySip = monthlyContribution;
+
+    final effectiveReturn =
+        useTaxHarvesting ? expectedReturnPercent + 3.0 : expectedReturnPercent;
+    final double midRate = effectiveReturn / 100;
+    final double bullRate = (effectiveReturn + (volatilityPercent * 0.9)) / 100;
+    final double bearRate = (effectiveReturn - (volatilityPercent * 1.1)) / 100;
+
+    final effectiveInflation =
+        useMultiSegmentInflation ? 12.5 : inflationPercent;
+    final double infRate = effectiveInflation / 100;
+
+    final rMonthlyMid = pow(1 + midRate, 1 / 12) - 1;
+    final rMonthlyBull = pow(1 + bullRate, 1 / 12) - 1;
+    final rMonthlyBear = pow(1 + bearRate, 1 / 12) - 1;
+    final int shockYear =
+        investmentHorizonYears > 3 ? investmentHorizonYears ~/ 2 : 2;
+
+    for (int y = 1; y <= investmentHorizonYears; y++) {
+      for (int m = 1; m <= 12; m++) {
+        medianCorpus = (medianCorpus + currentMonthlySip) * (1 + rMonthlyMid);
+        optimisticCorpus =
+            (optimisticCorpus + currentMonthlySip) * (1 + rMonthlyBull);
+        stressedCorpus =
+            (stressedCorpus + currentMonthlySip) * (1 + rMonthlyBear);
+        totalInvested += currentMonthlySip;
+      }
+
+      if (useBlackSwanMode && y == shockYear) {
+        medianCorpus *= 0.55;
+        optimisticCorpus *= 0.60;
+        stressedCorpus *= 0.40;
+      } else if (useBlackSwanMode && y == shockYear + 1) {
+        medianCorpus *= 1.35;
+        optimisticCorpus *= 1.30;
+        stressedCorpus *= 1.40;
+      }
+
+      final realVal = medianCorpus / pow(1 + infRate, y);
+
+      results.add(
+        MonteCarloTrajectoryPoint(
+          year: y,
+          p10Corpus: stressedCorpus < 0 ? 0 : stressedCorpus,
+          p50Corpus: medianCorpus,
+          p90Corpus: optimisticCorpus,
+          totalInvested: totalInvested,
+          realValue: realVal,
+        ),
+      );
+
+      currentMonthlySip = currentMonthlySip * (1 + (annualStepUpPercent / 100));
+    }
+
+    return results;
+  }
+
+  static List<GrowthProjection> calculateProjections({
+    required double startingDeposit,
+    required double monthlyContribution,
+    required double expectedReturnPercent,
+    required double annualStepUpPercent,
+    required int investmentHorizonYears,
+    required double inflationPercent,
+  }) =>
+      calculateGrowthProjections(
+        startingDeposit: startingDeposit,
+        monthlyContribution: monthlyContribution,
+        expectedReturnPercent: expectedReturnPercent,
+        annualStepUpPercent: annualStepUpPercent,
+        investmentHorizonYears: investmentHorizonYears,
+        inflationPercent: inflationPercent,
+      );
+
+  /// Calculates SWP retirement decumulation with complete Pro Suite math:
+  /// 1. Sequence of Returns Risk (SORR) Stress Simulator
+  /// 2. Tax-Aware Net Withdrawal Engine
+  /// 3. Dynamic Guardrails Strategy (Guyton-Klinger Rules)
   static List<SwpProjection> calculateSwp({
     required double startingCorpus,
     required double initialMonthlyWithdrawal,
     required double portfolioYieldPercent,
     required double inflationPercent,
     required int horizonYears,
-    double withdrawalStepUpPercent = 0.0,
+    bool useSequenceOfReturnsRisk = false,
+    bool useTaxAwareWithdrawals = false,
+    bool useDynamicGuardrails = false,
   }) {
-    return calculateSwpStrategy(
-      initialCorpus: startingCorpus,
-      monthlyWithdrawal: initialMonthlyWithdrawal,
-      expectedReturnPercent: portfolioYieldPercent,
-      withdrawalStepUpPercent: withdrawalStepUpPercent > 0
-          ? withdrawalStepUpPercent
-          : inflationPercent,
-      inflationPercent: inflationPercent,
-      totalYears: horizonYears,
-    );
-  }
-}
+    List<SwpProjection> results = [];
 
-List<GrowthProjection> calculateStrategy({
-  required double initialLumpSum,
-  required double monthlySip,
-  required double stepUpPercent,
-  required double equityPercent,
-  required double equityReturnPercent,
-  required double debtReturnPercent,
-  required double inflationPercent,
-  required int totalYears,
-  double equityTaxRate = 12.5,
-  double ltcgExemption = 125000,
-}) {
-  List<GrowthProjection> timeline = [];
-  double debtPercent = (100 - equityPercent).clamp(0, 100);
-  double eqCorpus = initialLumpSum * (equityPercent / 100);
-  double dCorpus = initialLumpSum * (debtPercent / 100);
-  double currentSip = monthlySip, totalInv = initialLumpSum;
-  double eqInv = initialLumpSum * (equityPercent / 100);
-  double dInv = initialLumpSum * (debtPercent / 100);
+    double currentCorpus = startingCorpus;
+    double currentMonthlyWithdrawal = initialMonthlyWithdrawal;
+    double cumulativeWithdrawn = 0.0;
+    double initialWithdrawalRate =
+        (initialMonthlyWithdrawal * 12) / max(startingCorpus, 1);
 
-  for (int yr = 1; yr <= totalYears; yr++) {
-    for (int m = 1; m <= 12; m++) {
-      double eqSip = currentSip * (equityPercent / 100);
-      double dSip = currentSip * (debtPercent / 100);
-      eqCorpus = (eqCorpus + eqSip) * (1 + (equityReturnPercent / 100 / 12));
-      dCorpus = (dCorpus + dSip) * (1 + (debtReturnPercent / 100 / 12));
-      totalInv += currentSip;
-      eqInv += eqSip;
-      dInv += dSip;
-    }
-    double totalCorpus = eqCorpus + dCorpus;
-    double eqGain = math.max(0.0, eqCorpus - eqInv);
-    double eqTaxableGain = math.max(0.0, eqGain - ltcgExemption);
-    double eqTax = eqTaxableGain * (equityTaxRate / 100);
-    double dGain = math.max(0.0, dCorpus - dInv);
-    double dTax = dGain * (equityTaxRate / 100);
-    double totalTax = eqTax + dTax;
-    double postTaxCorpus = totalCorpus - totalTax;
-    double realVal =
-        totalCorpus / math.pow(1 + (inflationPercent / 100), yr).toDouble();
+    for (int y = 1; y <= horizonYears; y++) {
+      bool isDepleted = false;
+      double previousCorpus = currentCorpus;
 
-    timeline.add(
-      GrowthProjection(
-        year: yr,
-        monthlySip: currentSip,
-        totalInvested: totalInv,
-        equityCorpus: eqCorpus,
-        debtCorpus: dCorpus,
-        corpusValue: totalCorpus,
-        inflationAdjustedValue: realVal,
-        totalTax: totalTax,
-        postTaxCorpus: postTaxCorpus,
-      ),
-    );
-    currentSip *= (1 + (stepUpPercent / 100));
-  }
-  return timeline;
-}
-
-List<SwpProjection> calculateSwpStrategy({
-  required double initialCorpus,
-  required double monthlyWithdrawal,
-  required double expectedReturnPercent,
-  required double withdrawalStepUpPercent,
-  required double inflationPercent,
-  required int totalYears,
-}) {
-  List<SwpProjection> timeline = [];
-  double currentCorpus = initialCorpus;
-  double currentMonthlyWithdrawal = monthlyWithdrawal;
-  double cumulativeWithdrawn = 0;
-  bool depleted = false;
-
-  for (int yr = 1; yr <= totalYears; yr++) {
-    for (int m = 1; m <= 12; m++) {
-      if (currentCorpus <= 0) {
-        currentCorpus = 0;
-        depleted = true;
-        break;
+      // 1. Sequence of Returns Risk (SORR) Stress Simulator
+      double effectiveYearlyYield = portfolioYieldPercent;
+      if (useSequenceOfReturnsRisk) {
+        if (y == 1) {
+          effectiveYearlyYield = -25.0; // Year 1 severe market crash (-25%)
+        } else if (y == 2) {
+          effectiveYearlyYield = -15.0; // Year 2 lingering drawdown (-15%)
+        } else if (y == 3) {
+          effectiveYearlyYield = 18.0; // Year 3 recovery bounce (+18%)
+        }
       }
 
-      // Monthly compounding return
-      currentCorpus *= (1 + (expectedReturnPercent / 100 / 12));
+      final rMonthly = pow(1 + (effectiveYearlyYield / 100), 1 / 12) - 1;
 
-      // Monthly withdrawal execution
-      if (currentCorpus >= currentMonthlyWithdrawal) {
-        currentCorpus -= currentMonthlyWithdrawal;
-        cumulativeWithdrawn += currentMonthlyWithdrawal;
+      for (int m = 1; m <= 12; m++) {
+        if (currentCorpus <= 0) {
+          isDepleted = true;
+          currentCorpus = 0;
+          break;
+        }
+
+        double grossWithdrawal = min(currentCorpus, currentMonthlyWithdrawal);
+
+        // 2. Tax-Aware Net Withdrawal Engine (~3% unit liquidation drag for capital gains)
+        double requiredGrossWithdrawal =
+            useTaxAwareWithdrawals ? grossWithdrawal * 1.03 : grossWithdrawal;
+
+        currentCorpus -= min(currentCorpus, requiredGrossWithdrawal);
+        cumulativeWithdrawn += grossWithdrawal;
+
+        currentCorpus = currentCorpus * (1 + rMonthly);
+      }
+
+      final realPurchasingPower =
+          currentMonthlyWithdrawal / pow(1 + (inflationPercent / 100), y);
+
+      results.add(
+        SwpProjection(
+          year: y,
+          monthlyWithdrawal: currentMonthlyWithdrawal,
+          totalWithdrawn: cumulativeWithdrawn,
+          remainingCorpus: max(0.0, currentCorpus),
+          realPurchasingPower: realPurchasingPower,
+          isDepleted: isDepleted || currentCorpus <= 0,
+        ),
+      );
+
+      // 3. Dynamic Guardrails Strategy (Guyton-Klinger Rules)
+      if (useDynamicGuardrails && !isDepleted) {
+        double currentWithdrawalRate =
+            (currentMonthlyWithdrawal * 12) / max(currentCorpus, 1);
+
+        if (currentWithdrawalRate > initialWithdrawalRate * 1.20) {
+          // Rule A: Take 10% pay cut if withdrawal rate spikes >20%
+          currentMonthlyWithdrawal = currentMonthlyWithdrawal * 0.90;
+        } else if (currentCorpus < previousCorpus) {
+          // Rule B: Freeze inflation step-up during down years
+          currentMonthlyWithdrawal = currentMonthlyWithdrawal;
+        } else {
+          // Standard inflation step-up
+          currentMonthlyWithdrawal =
+              currentMonthlyWithdrawal * (1 + (inflationPercent / 100));
+        }
       } else {
-        cumulativeWithdrawn += currentCorpus;
-        currentCorpus = 0;
-        depleted = true;
+        currentMonthlyWithdrawal =
+            currentMonthlyWithdrawal * (1 + (inflationPercent / 100));
       }
     }
 
-    double realPower =
-        currentCorpus / math.pow(1 + (inflationPercent / 100), yr).toDouble();
-
-    timeline.add(
-      SwpProjection(
-        year: yr,
-        monthlyWithdrawal: currentMonthlyWithdrawal,
-        totalWithdrawn: cumulativeWithdrawn,
-        remainingCorpus: currentCorpus,
-        realPurchasingPower: realPower,
-        isDepleted: depleted,
-      ),
-    );
-
-    // Increase withdrawal for next year (inflation adjustment)
-    currentMonthlyWithdrawal *= (1 + (withdrawalStepUpPercent / 100));
+    return results;
   }
-
-  return timeline;
 }

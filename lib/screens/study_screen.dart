@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../services/preferences_service.dart';
 import '../widgets/dashboard_app_bar.dart';
 import '../widgets/financial_versus_card.dart';
 
@@ -10,8 +9,7 @@ class StudyScreen extends StatefulWidget {
     double sip,
     double stepUp,
     int years,
-  )?
-  onApplyStrategy;
+  )? onApplyStrategy;
   final VoidCallback? onNavigateToPlanner;
 
   const StudyScreen({
@@ -44,9 +42,8 @@ class _StudyScreenState extends State<StudyScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
-      appBar: DashboardAppBar(
+      appBar: const DashboardAppBar(
         title: 'Financial Knowledge & Decision Hub',
-        onCountryChanged: (_) {},
       ),
       body: Column(
         children: [
@@ -372,7 +369,7 @@ class _StudyScreenState extends State<StudyScreen>
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: accentColor.withOpacity(0.4)),
+        border: Border.all(color: accentColor.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -391,9 +388,9 @@ class _StudyScreenState extends State<StudyScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: accentColor.withOpacity(0.15),
+                  color: accentColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: accentColor.withOpacity(0.5)),
+                  border: Border.all(color: accentColor.withValues(alpha: 0.5)),
                 ),
                 child: Text(
                   categoryBadge,
@@ -454,7 +451,7 @@ class _StudyScreenState extends State<StudyScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(

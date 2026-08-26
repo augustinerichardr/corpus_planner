@@ -16,17 +16,26 @@ class _MFDiscoveryPageState extends State<MFDiscoveryPage> {
   List<MutualFundScheme> _searchResults = [];
   bool _isLoading = false;
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   void _performSearch() async {
-    if (_searchController.text.trim().isEmpty) return;
+    final query = _searchController.text.trim();
+    if (query.isEmpty) return;
     setState(() => _isLoading = true);
 
     try {
-      final results = await MFService.searchFunds(_searchController.text);
+      final results = await MFService.searchFunds(query);
+      if (!mounted) return;
       setState(() {
         _searchResults = results;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(
         context,
@@ -94,6 +103,7 @@ class _MFDiscoveryPageState extends State<MFDiscoveryPage> {
               final sip = double.tryParse(sipController.text) ?? 0.0;
               widget.onAddInvestment(fund, sip);
               Navigator.pop(ctx);
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('Added ${fund.schemeName} to Planner!')),
               );

@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
-import '../models/portfolio_snapshot_model.dart';
-import '../services/portfolio_storage_service.dart';
+import '../models/portfolio_models.dart';
+import '../services/settings_service.dart';
 import '../widgets/dashboard_app_bar.dart';
+import '../widgets/regulatory_disclaimer.dart';
+import '../widgets/portfolio/net_worth_hero_card.dart';
+import '../widgets/portfolio/assets_tab_view.dart';
+import '../widgets/portfolio/debts_tab_view.dart';
+import '../widgets/portfolio/analytics_tab_view.dart';
 
 class PortfolioManagerScreen extends StatefulWidget {
+  final int initialTabIndex;
   final Function(double lumpSum, double monthlySip)? onSimulateInPlanner;
   final Function(double totalDebt)? onSimulateInArbitrage;
 
   const PortfolioManagerScreen({
     super.key,
+    this.initialTabIndex = 0,
     this.onSimulateInPlanner,
     this.onSimulateInArbitrage,
   });
@@ -20,853 +27,537 @@ class PortfolioManagerScreen extends StatefulWidget {
 class _PortfolioManagerScreenState extends State<PortfolioManagerScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  List<PortfolioSnapshot> _snapshots = [];
-  PortfolioSnapshot? _activeSnapshot;
-  bool _isLoading = true;
+  List<AssetItem> _assets = PortfolioSampleData.getDefaultAssets();
+  final List<DebtItem> _debts = PortfolioSampleData.getDefaultDebts();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _loadPortfolio();
-  }
-
-  void _loadPortfolio() async {
-    final list = await PortfolioStorageService.getAllSnapshots();
-    setState(() {
-      _snapshots = list;
-      _activeSnapshot = list.isNotEmpty ? list.first : null;
-      _isLoading = false;
-    });
-  }
-
-  String _formatINR(double val) {
-    if (val >= 10000000 || val <= -10000000) {
-      return '₹${(val / 10000000).toStringAsFixed(2)} Cr';
-    } else if (val >= 100000 || val <= -100000) {
-      return '₹${(val / 100000).toStringAsFixed(2)} L';
-    } else if (val >= 1000 || val <= -1000) {
-      return '₹${(val / 1000).toStringAsFixed(1)} K';
-    }
-    return '₹${val.toStringAsFixed(0)}';
-  }
-
-  void _saveCurrentSnapshot(String label) async {
-    if (_activeSnapshot == null) return;
-    final now = DateTime.now();
-    final newSnap = PortfolioSnapshot(
-      id: 'snapshot_${now.millisecondsSinceEpoch}',
-      recordedDate: now,
-      note: label.isNotEmpty
-          ? label
-          : 'Snapshot ${now.day}/${now.month}/${now.year}',
-      assets: _activeSnapshot!.assets,
-      liabilities: _activeSnapshot!.liabilities,
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: widget.initialTabIndex.clamp(0, 2),
     );
-    await PortfolioStorageService.saveSnapshot(newSnap);
-    _loadPortfolio();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Portfolio snapshot saved successfully!'),
-          backgroundColor: Color(0xFF10B981),
-        ),
-      );
+  }
+
+  @override
+  void didUpdateWidget(covariant PortfolioManagerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTabIndex != widget.initialTabIndex) {
+      _tabController.animateTo(widget.initialTabIndex.clamp(0, 2));
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF0F172A),
-        body: Center(
-          child: CircularProgressIndicator(color: Color(0xFF10B981)),
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  double get _totalAssets =>
+      _assets.fold(0.0, (sum, item) => sum + item.currentValue);
+  double get _totalMonthlySip =>
+      _assets.fold(0.0, (sum, item) => sum + item.monthlySip);
+  double get _totalDebts =>
+      _debts.fold(0.0, (sum, item) => sum + item.outstandingPrincipal);
+  double get _totalMonthlyEmi =>
+      _debts.fold(0.0, (sum, item) => sum + item.monthlyEmi);
+
+  void _openAddAssetDialog(String currencySymbol) {
+    final nameCtrl = TextEditingController();
+    final valueCtrl = TextEditingController();
+    final sipCtrl = TextEditingController();
+    final returnCtrl = TextEditingController(text: '12.0');
+    String selectedCategory = 'Equity Funds';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          title: const Row(
+            children: [
+              Icon(Icons.add_chart, color: Color(0xFF10B981), size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Add New Asset',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: SizedBox(
+              width: 340,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildDialogTextField(
+                    nameCtrl,
+                    'Asset Name',
+                    'e.g. Nifty 50 Index Fund',
+                    Icons.badge_outlined,
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedCategory,
+                    dropdownColor: const Color(0xFF0F172A),
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: _dialogInputDecoration(
+                      'Category',
+                      Icons.category_outlined,
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'Equity Funds',
+                        child: Text('Equity Mutual Funds'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Alpha Growth',
+                        child: Text('Mid / Small Cap Alpha'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Govt EEE Scheme',
+                        child: Text('PPF / Sovereign Debt'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Tier-I Pension',
+                        child: Text('NPS / Pension'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Retirement Fixed',
+                        child: Text('EPF / VPF'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Instant Cash',
+                        child: Text('Emergency Liquid Cash'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Direct Stocks',
+                        child: Text('Direct Listed Equities'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Gold / SGB',
+                        child: Text('Gold & Sovereign Bonds'),
+                      ),
+                    ],
+                    onChanged: (val) => val != null
+                        ? setDialogState(() => selectedCategory = val)
+                        : null,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildDialogTextField(
+                    valueCtrl,
+                    'Current Balance / Value ($currencySymbol)',
+                    'e.g. 500000',
+                    Icons.account_balance_wallet_outlined,
+                    isNumber: true,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildDialogTextField(
+                    sipCtrl,
+                    'Monthly Investment / SIP ($currencySymbol)',
+                    'e.g. 10000 (0 if Lump Sum)',
+                    Icons.savings_outlined,
+                    isNumber: true,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildDialogTextField(
+                    returnCtrl,
+                    'Expected Return (% p.a.)',
+                    'e.g. 12.0',
+                    Icons.trending_up,
+                    isNumber: true,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.black,
+              ),
+              onPressed: () {
+                final name = nameCtrl.text.trim();
+                final val = double.tryParse(valueCtrl.text.trim()) ?? 0.0;
+                final sip = double.tryParse(sipCtrl.text.trim()) ?? 0.0;
+                final ret = double.tryParse(returnCtrl.text.trim()) ?? 10.0;
+                if (name.isNotEmpty && val > 0) {
+                  setState(() {
+                    _assets.add(AssetItem(
+                      name: name,
+                      category: selectedCategory,
+                      currentValue: val,
+                      monthlySip: sip,
+                      expectedReturn: ret,
+                      icon: _getCategoryIcon(selectedCategory),
+                      accentColor: _getCategoryColor(selectedCategory),
+                      tooltip: '$selectedCategory compounding at $ret% p.a.',
+                    ));
+                  });
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text(
+                'Add Asset',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
         ),
-      );
-    }
-
-    final snap = _activeSnapshot;
-    final double netWorth = snap?.netWorth ?? 0;
-    final double totalAssets = snap?.totalAssets ?? 0;
-    final double totalLiabilities = snap?.totalLiabilities ?? 0;
-    final double totalMonthlySavings = snap?.totalMonthlySavings ?? 0;
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      appBar: DashboardAppBar(
-        title: 'India Corpus & Debt Manager',
-        onCountryChanged: (_) {},
       ),
-      body: Column(
-        children: [
-          // Net Worth Summary Banner
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: const Color(0xFF1E293B),
+    );
+  }
+
+  void _openAddDebtDialog(String currencySymbol) {
+    final nameCtrl = TextEditingController();
+    final principalCtrl = TextEditingController();
+    final rateCtrl = TextEditingController(text: '8.5');
+    final emiCtrl = TextEditingController();
+    String selectedType = 'Secured Housing Loan';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          title: const Row(
+            children: [
+              Icon(Icons.credit_card_off, color: Color(0xFFEF4444), size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Add New Loan',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: SizedBox(
+              width: 340,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildDialogTextField(
+                    nameCtrl,
+                    'Loan / Debt Name',
+                    'e.g. Axis Home Loan',
+                    Icons.badge_outlined,
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedType,
+                    dropdownColor: const Color(0xFF0F172A),
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    decoration: _dialogInputDecoration(
+                      'Loan Type',
+                      Icons.category_outlined,
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'Secured Housing Loan',
+                        child: Text('Home / Land Loan'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Fixed Term Loan',
+                        child: Text('Vehicle / Auto Loan'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Personal Unsecured',
+                        child: Text('Personal Loan'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Education Loan',
+                        child: Text('Education Loan'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Revolving Credit',
+                        child: Text('Credit Card / Overdraft'),
+                      ),
+                    ],
+                    onChanged: (val) => val != null
+                        ? setDialogState(() => selectedType = val)
+                        : null,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildDialogTextField(
+                    principalCtrl,
+                    'Outstanding Principal ($currencySymbol)',
+                    'e.g. 2000000',
+                    Icons.money_off_rounded,
+                    isNumber: true,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildDialogTextField(
+                    rateCtrl,
+                    'Interest Rate (% p.a.)',
+                    'e.g. 8.5',
+                    Icons.percent,
+                    isNumber: true,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildDialogTextField(
+                    emiCtrl,
+                    'Monthly EMI ($currencySymbol)',
+                    'e.g. 22000',
+                    Icons.calendar_month,
+                    isNumber: true,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFEF4444),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                final name = nameCtrl.text.trim();
+                final principal =
+                    double.tryParse(principalCtrl.text.trim()) ?? 0.0;
+                final rate = double.tryParse(rateCtrl.text.trim()) ?? 8.5;
+                final emi = double.tryParse(emiCtrl.text.trim()) ?? 0.0;
+                if (name.isNotEmpty && principal > 0) {
+                  setState(() {
+                    _debts.add(DebtItem(
+                      name: name,
+                      type: selectedType,
+                      outstandingPrincipal: principal,
+                      interestRate: rate,
+                      monthlyEmi: emi,
+                    ));
+                  });
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text(
+                'Add Loan',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _dialogInputDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.grey, fontSize: 12),
+      prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 16),
+      filled: true,
+      fillColor: const Color(0xFF0F172A),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: Color(0xFF334155)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: Color(0xFF10B981)),
+      ),
+    );
+  }
+
+  Widget _buildDialogTextField(
+    TextEditingController ctrl,
+    String label,
+    String hint,
+    IconData icon, {
+    bool isNumber = false,
+  }) {
+    return TextField(
+      controller: ctrl,
+      keyboardType: isNumber
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : TextInputType.text,
+      style: const TextStyle(color: Colors.white, fontSize: 13),
+      decoration: _dialogInputDecoration(label, icon).copyWith(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Colors.white24, fontSize: 12),
+      ),
+    );
+  }
+
+  IconData _getCategoryIcon(String c) {
+    if (c.contains('Equity') || c.contains('Growth')) return Icons.trending_up;
+    if (c.contains('Govt') || c.contains('Fixed')) {
+      return Icons.verified_user_outlined;
+    }
+    if (c.contains('Pension')) return Icons.account_balance_outlined;
+    if (c.contains('Cash')) return Icons.savings_outlined;
+    if (c.contains('Gold')) return Icons.toll_outlined;
+    return Icons.pie_chart_outline;
+  }
+
+  Color _getCategoryColor(String c) {
+    if (c.contains('Equity')) return const Color(0xFF10B981);
+    if (c.contains('Growth')) return const Color(0xFF38BDF8);
+    if (c.contains('Govt')) return const Color(0xFF818CF8);
+    if (c.contains('Pension')) return const Color(0xFFF59E0B);
+    if (c.contains('Cash')) return const Color(0xFFA78BFA);
+    return const Color(0xFF34D399);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = SettingsService();
+
+    return AnimatedBuilder(
+      animation: settings,
+      builder: (context, _) {
+        final sym = settings.currencySymbol;
+
+        return Scaffold(
+          backgroundColor: const Color(0xFF0F172A),
+          appBar: const DashboardAppBar(
+              title: 'Net Worth Portfolio & Balance Sheet'),
+          body: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
             child: Column(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _summaryBadge(
-                      'Total Assets (PPF, NPS, MF)',
-                      _formatINR(totalAssets),
-                      const Color(0xFF10B981),
-                    ),
-                    _summaryBadge(
-                      'Total Debts / Loans',
-                      _formatINR(totalLiabilities),
-                      const Color(0xFFEF4444),
-                    ),
-                    _summaryBadge(
-                      'Current Net Worth',
-                      _formatINR(netWorth),
-                      const Color(0xFF38BDF8),
-                    ),
-                  ],
+                NetWorthHeroCard(
+                  totalAssets: _totalAssets,
+                  totalDebts: _totalDebts,
+                  totalMonthlySip: _totalMonthlySip,
+                  onSimulateInPlanner: () => widget.onSimulateInPlanner
+                      ?.call(_totalAssets, _totalMonthlySip),
+                  onSimulateInArbitrage: () =>
+                      widget.onSimulateInArbitrage?.call(_totalDebts),
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF10B981),
-                          foregroundColor: Colors.black,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        icon: const Icon(Icons.rocket_launch, size: 14),
-                        label: const Text(
-                          'Simulate Assets in Planner',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        onPressed: () {
-                          widget.onSimulateInPlanner?.call(
-                            totalAssets,
-                            totalMonthlySavings,
-                          );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Transferred ${_formatINR(totalAssets)} assets & ${_formatINR(totalMonthlySavings)} SIP into Planner!',
-                              ),
-                              backgroundColor: const Color(0xFF10B981),
-                            ),
-                          );
-                        },
-                      ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 44,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF334155)),
+                  ),
+                  child: TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    indicator: BoxDecoration(
+                      color: const Color(0xFF10B981),
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                    if (totalLiabilities > 0) ...[
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Color(0xFF38BDF8)),
-                            foregroundColor: const Color(0xFF38BDF8),
-                            visualDensity: VisualDensity.compact,
+                    labelColor: Colors.black,
+                    unselectedLabelColor: Colors.grey.shade400,
+                    labelStyle: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.normal,
+                    ),
+                    tabs: const [
+                      Tab(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.grid_view_rounded, size: 14),
+                              SizedBox(width: 6),
+                              Text('Assets & SIPs'),
+                            ],
                           ),
-                          icon: const Icon(
-                            Icons.swap_horizontal_circle,
-                            size: 14,
+                        ),
+                      ),
+                      Tab(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.credit_card, size: 14),
+                              SizedBox(width: 6),
+                              Text('Debts & Loans'),
+                            ],
                           ),
-                          label: const Text(
-                            'Simulate Debt Arbitrage',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        ),
+                      ),
+                      Tab(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.pie_chart_outline, size: 14),
+                              SizedBox(width: 6),
+                              Text('Allocation & Milestones'),
+                            ],
                           ),
-                          onPressed: () {
-                            widget.onSimulateInArbitrage?.call(
-                              totalLiabilities,
-                            );
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Transferred ${_formatINR(totalLiabilities)} loan principal into Arbitrage Simulator!',
-                                ),
-                                backgroundColor: const Color(0xFF38BDF8),
-                              ),
-                            );
-                          },
                         ),
                       ),
                     ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Tabs
-          Container(
-            color: const Color(0xFF1E293B),
-            child: TabBar(
-              controller: _tabController,
-              indicatorColor: const Color(0xFF10B981),
-              labelColor: const Color(0xFF10B981),
-              unselectedLabelColor: Colors.grey,
-              tabs: const [
-                Tab(
-                  icon: Icon(Icons.account_balance_wallet_outlined),
-                  text: 'India Assets',
-                ),
-                Tab(
-                  icon: Icon(Icons.money_off_csred_outlined),
-                  text: 'Loans & Debts',
-                ),
-                Tab(
-                  icon: Icon(Icons.history_toggle_off),
-                  text: 'Timeline & History',
-                ),
-              ],
-            ),
-          ),
-
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildAssetsTab(),
-                _buildDebtsTab(),
-                _buildHistoryTab(),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryBadge(String label, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10)),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAssetsTab() {
-    final assets = _activeSnapshot?.assets ?? [];
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Indian Investment Instruments',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
-                  foregroundColor: Colors.black,
-                  visualDensity: VisualDensity.compact,
-                ),
-                icon: const Icon(Icons.add, size: 14),
-                label: const Text(
-                  'Add Instrument',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-                onPressed: () => _showAddAssetDialog(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: assets.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (ctx, i) {
-              final a = assets[i];
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF334155)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 18,
-                          backgroundColor: const Color(0xFF064E3B),
-                          child: Icon(
-                            _getAssetIcon(a.category),
-                            color: const Color(0xFF10B981),
-                            size: 18,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              a.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                            Text(
-                              '${a.category} • Expected: ${a.expectedReturnPercent}% p.a.',
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          _formatINR(a.currentVal),
-                          style: const TextStyle(
-                            color: Color(0xFF10B981),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                        Text(
-                          'SIP: ${_formatINR(a.monthlyContribution)}/mo',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDebtsTab() {
-    final liabilities = _activeSnapshot?.liabilities ?? [];
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Active Liabilities & Bank Loans',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFEF4444),
-                  foregroundColor: Colors.white,
-                  visualDensity: VisualDensity.compact,
-                ),
-                icon: const Icon(Icons.add, size: 14),
-                label: const Text(
-                  'Add Loan / Debt',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-                onPressed: () => _showAddDebtDialog(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: liabilities.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (ctx, i) {
-              final l = liabilities[i];
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: const Color(0xFFEF4444).withOpacity(0.4),
                   ),
                 ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const CircleAvatar(
-                              radius: 18,
-                              backgroundColor: Color(0xFF7F1D1D),
-                              child: Icon(
-                                Icons.money_off,
-                                color: Color(0xFFEF4444),
-                                size: 18,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  l.name,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                Text(
-                                  '${l.loanType} • Interest: ${l.interestRatePercent}%',
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                const SizedBox(height: 8),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      AssetsTabView(
+                        assets: _assets,
+                        totalMonthlySip: _totalMonthlySip,
+                        onClearAll: () => setState(() => _assets = []),
+                        onResetSample: () => setState(
+                          () =>
+                              _assets = PortfolioSampleData.getDefaultAssets(),
                         ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              _formatINR(l.principalRemaining),
-                              style: const TextStyle(
-                                color: Color(0xFFEF4444),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                            Text(
-                              'EMI: ${_formatINR(l.monthlyEmi)}/mo',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const Divider(color: Colors.white10, height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Remaining Tenure: ${l.tenureRemainingMonths} months (~${(l.tenureRemainingMonths / 12).toStringAsFixed(1)} yrs)',
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 10.5,
-                          ),
-                        ),
-                        Text(
-                          'Payoff Date: ~${DateTime.now().add(Duration(days: l.tenureRemainingMonths * 30)).year}',
-                          style: const TextStyle(
-                            color: Color(0xFF38BDF8),
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHistoryTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Portfolio Snapshots & History',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF38BDF8),
-                  foregroundColor: Colors.black,
-                  visualDensity: VisualDensity.compact,
-                ),
-                icon: const Icon(Icons.camera_alt_outlined, size: 14),
-                label: const Text(
-                  'Capture Snapshot',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-                onPressed: () {
-                  final textCtrl = TextEditingController(
-                    text:
-                        'Snapshot ${DateTime.now().month}/${DateTime.now().year}',
-                  );
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      backgroundColor: const Color(0xFF1E293B),
-                      title: const Text(
-                        'Save Portfolio Snapshot',
-                        style: TextStyle(color: Colors.white, fontSize: 14),
+                        onAddAsset: () => _openAddAssetDialog(sym),
                       ),
-                      content: TextField(
-                        controller: textCtrl,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'Snapshot Label / Note',
-                          labelStyle: TextStyle(color: Colors.grey),
-                        ),
+                      DebtsTabView(
+                        debts: _debts,
+                        totalMonthlyEmi: _totalMonthlyEmi,
+                        onAddDebt: () => _openAddDebtDialog(sym),
                       ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Cancel'),
-                        ),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF10B981),
-                            foregroundColor: Colors.black,
-                          ),
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            _saveCurrentSnapshot(textCtrl.text);
-                          },
-                          child: const Text('Save'),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _snapshots.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (ctx, i) {
-              final s = _snapshots[i];
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF334155)),
+                      AnalyticsTabView(
+                        netWorth: _totalAssets - _totalDebts,
+                        totalAssets: _totalAssets,
+                        totalMonthlySip: _totalMonthlySip,
+                        totalMonthlyEmi: _totalMonthlyEmi,
+                        assets: _assets,
+                      ),
+                    ],
+                  ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          s.note,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                        Text(
-                          'Recorded: ${s.recordedDate.day}/${s.recordedDate.month}/${s.recordedDate.year}',
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              'Net: ${_formatINR(s.netWorth)}',
-                              style: const TextStyle(
-                                color: Color(0xFF38BDF8),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                            Text(
-                              'Assets: ${_formatINR(s.totalAssets)} | Debt: ${_formatINR(s.totalLiabilities)}',
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.grey,
-                            size: 18,
-                          ),
-                          onPressed: () async {
-                            await PortfolioStorageService.deleteSnapshot(s.id);
-                            _loadPortfolio();
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
+                const SizedBox(height: 6),
+                const RegulatoryDisclaimer(),
+              ],
+            ),
           ),
-        ],
-      ),
-    );
-  }
-
-  IconData _getAssetIcon(String cat) {
-    switch (cat) {
-      case 'PPF':
-      case 'EPF':
-      case 'SSY':
-        return Icons.verified_user_outlined;
-      case 'NPS':
-        return Icons.savings_outlined;
-      case 'Gold / SGB':
-        return Icons.auto_awesome;
-      default:
-        return Icons.trending_up;
-    }
-  }
-
-  void _showAddAssetDialog() {
-    String name = '', category = 'PPF';
-    double val = 0, sip = 0, ret = 7.1;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: const Text(
-          'Add Investment Instrument',
-          style: TextStyle(color: Colors.white, fontSize: 14),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              decoration: const InputDecoration(
-                labelText: 'Name (e.g. SBI PPF, HDFC FlexiCap)',
-                labelStyle: TextStyle(color: Colors.grey),
-              ),
-              onChanged: (v) => name = v,
-            ),
-            TextField(
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              decoration: const InputDecoration(
-                labelText: 'Current Value (₹)',
-                labelStyle: TextStyle(color: Colors.grey),
-              ),
-              onChanged: (v) => val = double.tryParse(v) ?? 0,
-            ),
-            TextField(
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              decoration: const InputDecoration(
-                labelText: 'Monthly Inflow / SIP (₹)',
-                labelStyle: TextStyle(color: Colors.grey),
-              ),
-              onChanged: (v) => sip = double.tryParse(v) ?? 0,
-            ),
-            TextField(
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              decoration: const InputDecoration(
-                labelText: 'Expected Return % (p.a.)',
-                labelStyle: TextStyle(color: Colors.grey),
-              ),
-              onChanged: (v) => ret = double.tryParse(v) ?? 7.1,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
-              foregroundColor: Colors.black,
-            ),
-            onPressed: () {
-              if (name.isNotEmpty && _activeSnapshot != null) {
-                final newAsset = AssetEntry(
-                  id: 'asset_${DateTime.now().millisecondsSinceEpoch}',
-                  name: name,
-                  category: category,
-                  currentVal: val,
-                  monthlyContribution: sip,
-                  expectedReturnPercent: ret,
-                );
-                setState(() {
-                  _activeSnapshot!.assets.add(newAsset);
-                });
-                _saveCurrentSnapshot('Updated Live Portfolio');
-              }
-              Navigator.pop(ctx);
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAddDebtDialog() {
-    String name = '', loanType = 'Home Loan';
-    double principal = 0, rate = 8.5, emi = 0;
-    int tenure = 60;
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        title: const Text(
-          'Add Debt / Loan Entry',
-          style: TextStyle(color: Colors.white, fontSize: 14),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              decoration: const InputDecoration(
-                labelText: 'Loan Name (e.g. SBI Home Loan)',
-                labelStyle: TextStyle(color: Colors.grey),
-              ),
-              onChanged: (v) => name = v,
-            ),
-            TextField(
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              decoration: const InputDecoration(
-                labelText: 'Outstanding Principal (₹)',
-                labelStyle: TextStyle(color: Colors.grey),
-              ),
-              onChanged: (v) => principal = double.tryParse(v) ?? 0,
-            ),
-            TextField(
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              decoration: const InputDecoration(
-                labelText: 'Monthly EMI (₹)',
-                labelStyle: TextStyle(color: Colors.grey),
-              ),
-              onChanged: (v) => emi = double.tryParse(v) ?? 0,
-            ),
-            TextField(
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-              decoration: const InputDecoration(
-                labelText: 'Remaining Months',
-                labelStyle: TextStyle(color: Colors.grey),
-              ),
-              onChanged: (v) => tenure = int.tryParse(v) ?? 60,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFEF4444),
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () {
-              if (name.isNotEmpty && _activeSnapshot != null) {
-                final newLiability = LiabilityEntry(
-                  id: 'debt_${DateTime.now().millisecondsSinceEpoch}',
-                  name: name,
-                  loanType: loanType,
-                  principalRemaining: principal,
-                  interestRatePercent: rate,
-                  monthlyEmi: emi,
-                  tenureRemainingMonths: tenure,
-                );
-                setState(() {
-                  _activeSnapshot!.liabilities.add(newLiability);
-                });
-                _saveCurrentSnapshot('Updated Live Portfolio');
-              }
-              Navigator.pop(ctx);
-            },
-            child: const Text('Add Loan'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

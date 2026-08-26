@@ -1,26 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../financial_engine.dart';
-import '../models/country_model.dart';
 import '../services/pdf_export_service.dart';
-import '../services/preferences_service.dart';
-import '../widgets/editable_slider_input.dart';
-import '../widgets/projection_table.dart';
+import '../services/settings_service.dart';
 import '../widgets/dashboard_app_bar.dart';
+import '../widgets/editable_slider_input.dart';
+import '../widgets/planner_trajectory_chart.dart';
+import '../widgets/regulatory_disclaimer.dart';
 import 'pricing_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final double? initialLumpSumOverride;
   final double? monthlySipOverride;
-  final VoidCallback? onNavigateToStudy;
   final Function(double terminalCorpus)? onNavigateToSwpWithCorpus;
+  final VoidCallback? onNavigateToStudy;
 
   const DashboardScreen({
     super.key,
     this.initialLumpSumOverride,
     this.monthlySipOverride,
-    this.onNavigateToStudy,
     this.onNavigateToSwpWithCorpus,
+    this.onNavigateToStudy,
   });
 
   @override
@@ -28,30 +28,42 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  double _initialLumpSum = 500000;
-  double _monthlySip = 50000;
-  double _stepUpPercent = 10;
-  double _equityPercent = 70;
-  double _debtPercent = 30;
-  double _equityReturnPercent = 14;
-  double _debtReturnPercent = 7.5;
-  double _inflationPercent = 6;
-  int _totalYears = 5;
-
-  String _countryName = 'India';
-  String _currencySymbol = '₹';
+  double _startingDeposit = 500000;
+  double _monthlyContribution = 50000;
+  double _expectedReturn = 12.0;
+  double _annualStepUpPercent = 10.0;
+  int _investmentHorizonYears = 15;
+  double _inflationPercent = 6.0;
   bool _isPro = false;
 
   @override
   void initState() {
     super.initState();
+    final settings = SettingsService();
+    _expectedReturn = settings.defaultExpectedReturn;
+    _annualStepUpPercent = settings.defaultStepUpPercent;
+
     if (widget.initialLumpSumOverride != null) {
-      _initialLumpSum = widget.initialLumpSumOverride!;
+      _startingDeposit = widget.initialLumpSumOverride!;
     }
     if (widget.monthlySipOverride != null) {
-      _monthlySip = widget.monthlySipOverride!;
+      _monthlyContribution = widget.monthlySipOverride!;
     }
-    _loadPreferences();
+    _loadProStatus();
+  }
+
+  Future<void> _loadProStatus() async {
+    final sp = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() => _isPro = sp.getBool('is_pro_unlocked') ?? false);
+    }
+  }
+
+  Future<void> _openPricingModal() async {
+    final upgraded = await PricingModal.show(context);
+    if (upgraded == true) {
+      _loadProStatus();
+    }
   }
 
   @override
@@ -59,64 +71,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.didUpdateWidget(oldWidget);
     if (widget.initialLumpSumOverride != null &&
         widget.initialLumpSumOverride != oldWidget.initialLumpSumOverride) {
-      setState(() => _initialLumpSum = widget.initialLumpSumOverride!);
+      setState(() => _startingDeposit = widget.initialLumpSumOverride!);
     }
     if (widget.monthlySipOverride != null &&
         widget.monthlySipOverride != oldWidget.monthlySipOverride) {
-      setState(() => _monthlySip = widget.monthlySipOverride!);
+      setState(() => _monthlyContribution = widget.monthlySipOverride!);
     }
   }
 
-  void _loadPreferences() async {
-    final prefs = await StrategyPreferences.load();
-    final sp = await SharedPreferences.getInstance();
-    final isPro = sp.getBool('is_pro_unlocked') ?? false;
-
-    setState(() {
-      _isPro = isPro;
-      if (widget.initialLumpSumOverride == null &&
-          prefs.containsKey('monthlySip')) {
-        _monthlySip = (prefs['monthlySip'] as num).toDouble();
-      }
-      if (prefs.containsKey('equityPercent')) {
-        _equityPercent = (prefs['equityPercent'] as num).toDouble();
-        _debtPercent = 100 - _equityPercent;
-      }
-      if (prefs.containsKey('stepUpPercent')) {
-        _stepUpPercent = (prefs['stepUpPercent'] as num).toDouble();
-      }
-      if (prefs.containsKey('totalYears')) {
-        _totalYears = (prefs['totalYears'] as num).toInt();
-      }
-    });
-  }
-
-  Future<void> _openPricingModal() async {
-    final upgraded = await PricingModal.show(context);
-    if (upgraded == true) {
-      _loadPreferences();
-    }
-  }
-
-  String _formatCurrency(double val) {
-    if (val >= 10000000) {
-      return '$_currencySymbol${(val / 10000000).toStringAsFixed(2)} Cr';
-    } else if (val >= 100000) {
-      return '$_currencySymbol${(val / 100000).toStringAsFixed(2)} L';
-    } else if (val >= 1000) {
-      return '$_currencySymbol${(val / 1000).toStringAsFixed(1)} K';
-    }
-    return '$_currencySymbol${val.toStringAsFixed(0)}';
-  }
-
-  void _updateRegion(CountryModel country) {
-    setState(() {
-      _countryName = country.name;
-      _currencySymbol = country.currencySymbol;
-    });
-  }
-
-  void _handlePdfExport(List<GrowthProjection> results) async {
+  void _handlePdfExport(
+      List<PlannerChartItem> chartData, SettingsService settings) async {
     final sp = await SharedPreferences.getInstance();
     final isPro = sp.getBool('is_pro_unlocked') ?? false;
 
@@ -125,293 +89,374 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final upgraded = await PricingModal.show(context);
       if (upgraded == true) {
         setState(() => _isPro = true);
-        _executePdfExport(results);
+        _executePdfExport(chartData, settings);
       }
       return;
     }
-
-    _executePdfExport(results);
+    _executePdfExport(chartData, settings);
   }
 
-  void _executePdfExport(List<GrowthProjection> results) {
-    PdfExportService.exportPlannerPdf(
-      countryName: _countryName,
-      currencySymbol: _currencySymbol,
-      initialLumpSum: _initialLumpSum,
-      monthlySip: _monthlySip,
-      stepUpPercent: _stepUpPercent,
-      equityPercent: _equityPercent,
-      equityReturnPercent: _equityReturnPercent,
-      debtReturnPercent: _debtReturnPercent,
+  void _executePdfExport(
+      List<PlannerChartItem> chartData, SettingsService settings) {
+    final terminal = chartData.isNotEmpty ? chartData.last : null;
+    PdfExportService.exportCorpusPdf(
+      countryName: settings.isIndianCurrency ? 'India' : 'International',
+      currencySymbol: settings.currencySymbol,
+      initialDeposit: _startingDeposit,
+      startingDeposit: _startingDeposit,
+      initialCorpus: _startingDeposit,
+      monthlyContribution: _monthlyContribution,
+      monthlySip: _monthlyContribution,
+      expectedReturnPercent: _expectedReturn,
+      expectedReturn: _expectedReturn,
+      annualStepUpPercent: _annualStepUpPercent,
+      stepUpPercent: _annualStepUpPercent,
+      investmentHorizonYears: _investmentHorizonYears,
+      years: _investmentHorizonYears,
       inflationPercent: _inflationPercent,
-      totalYears: _totalYears,
-      results: results,
-      formatCurrency: _formatCurrency,
+      inflationRate: _inflationPercent,
+      totalInvested: terminal?.totalInvested ?? 0.0,
+      totalReturns: terminal?.totalReturns ?? 0.0,
+      futureValue: terminal?.totalCorpus ?? 0.0,
+      targetCorpus: terminal?.totalCorpus ?? 0.0,
+      realValue: terminal?.realValue ?? 0.0,
+      isInstitutionalBranded: _isPro || settings.isInstitutionalPdfEnabled,
+      yearlySchedule: chartData
+          .map(
+            (d) => {
+              'year': d.year,
+              'monthlySip': d.monthlySip ?? 0.0,
+              'totalInvested': d.totalInvested,
+              'wealthGained': d.totalReturns,
+              'futureValue': d.totalCorpus,
+              'realValue': d.realValue,
+            },
+          )
+          .toList(),
+      formatCurrency: (v) => settings.formatCurrency(v),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final results = FinancialEngine.calculateGrowth(
-      initialLumpSum: _initialLumpSum,
-      monthlySip: _monthlySip,
-      stepUpPercent: _stepUpPercent,
-      equityPercent: _equityPercent,
-      equityReturnPercent: _equityReturnPercent,
-      debtReturnPercent: _debtReturnPercent,
-      inflationPercent: _inflationPercent,
-      totalYears: _totalYears,
-    );
-    final last = results.last;
+    final settings = SettingsService();
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      appBar: DashboardAppBar<CountryModel>(
-        title: 'Corpus Planner',
-        isPro: _isPro,
-        onUpgradeTap: _openPricingModal,
-        onCountryChanged: _updateRegion,
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isWideScreen = constraints.maxWidth > 900;
-          return isWideScreen
-              ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 380,
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: _buildInputsSidebar(),
-                      ),
-                    ),
-                    const VerticalDivider(color: Colors.white10, width: 1),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(16),
-                        child: _buildDashboardContent(results, last),
-                      ),
-                    ),
-                  ],
-                )
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      _buildInputsSidebar(),
-                      const SizedBox(height: 16),
-                      _buildDashboardContent(results, last),
-                    ],
-                  ),
-                );
-        },
-      ),
+    return AnimatedBuilder(
+      animation: settings,
+      builder: (context, _) {
+        final sym = settings.currencySymbol;
+
+        final bool useMonteCarlo = settings.isMonteCarloEnabled;
+        final bool useMultiInflation = settings.isMultiSegmentInflationEnabled;
+        final bool useBlackSwan = settings.isBlackSwanModeEnabled;
+        final bool useTaxHarvest = settings.isTaxHarvestingEnabled;
+
+        List<PlannerChartItem> chartData = [];
+
+        if (useMonteCarlo) {
+          final mcProjections = FinancialEngine.calculateMonteCarloProjections(
+            startingDeposit: _startingDeposit,
+            monthlyContribution: _monthlyContribution,
+            expectedReturnPercent: _expectedReturn,
+            annualStepUpPercent: _annualStepUpPercent,
+            investmentHorizonYears: _investmentHorizonYears,
+            inflationPercent: _inflationPercent,
+            useMultiSegmentInflation: useMultiInflation,
+            useBlackSwanMode: useBlackSwan,
+            useTaxHarvesting: useTaxHarvest,
+          );
+
+          chartData = mcProjections
+              .map(
+                (p) => PlannerChartItem(
+                  year: p.year,
+                  totalCorpus: p.p50Corpus,
+                  totalInvested: p.totalInvested,
+                  totalReturns: p.p50Corpus - p.totalInvested,
+                  realValue: p.realValue,
+                  monthlySip: _monthlyContribution,
+                ),
+              )
+              .toList();
+        } else {
+          final projections = FinancialEngine.calculateGrowthProjections(
+            startingDeposit: _startingDeposit,
+            monthlyContribution: _monthlyContribution,
+            expectedReturnPercent: _expectedReturn,
+            annualStepUpPercent: _annualStepUpPercent,
+            investmentHorizonYears: _investmentHorizonYears,
+            inflationPercent: _inflationPercent,
+            useMultiSegmentInflation: useMultiInflation,
+            useBlackSwanMode: useBlackSwan,
+            useTaxHarvesting: useTaxHarvest,
+          );
+
+          chartData = projections
+              .map(
+                (p) => PlannerChartItem(
+                  year: p.year,
+                  totalCorpus: p.futureValue,
+                  totalInvested: p.totalInvested,
+                  totalReturns: p.wealthGained,
+                  realValue: p.realValue,
+                  monthlySip: p.monthlySip,
+                ),
+              )
+              .toList();
+        }
+
+        final lastItem = chartData.isNotEmpty ? chartData.last : null;
+
+        return Scaffold(
+          backgroundColor: const Color(0xFF0F172A),
+          appBar: DashboardAppBar(
+            title: 'Corpus Wealth Simulator',
+            isPro: _isPro,
+            onUpgradeTap: _openPricingModal,
+          ),
+          body: Column(
+            children: [
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWideScreen = constraints.maxWidth > 900;
+                    return isWideScreen
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 340,
+                                child: SingleChildScrollView(
+                                  padding: const EdgeInsets.all(12),
+                                  child: _buildInputsPanel(sym),
+                                ),
+                              ),
+                              const VerticalDivider(
+                                color: Colors.white10,
+                                width: 1,
+                              ),
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  padding: const EdgeInsets.all(12),
+                                  child: _buildDashboard(
+                                    chartData,
+                                    lastItem,
+                                    settings,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : SingleChildScrollView(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              children: [
+                                _buildInputsPanel(sym),
+                                const SizedBox(height: 10),
+                                _buildDashboard(
+                                  chartData,
+                                  lastItem,
+                                  settings,
+                                ),
+                              ],
+                            ),
+                          );
+                  },
+                ),
+              ),
+              const RegulatoryDisclaimer(),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildInputsSidebar() {
+  Widget _buildInputsPanel(String sym) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF334155)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Strategy & Asset Inputs',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Investment Parameters',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Tooltip(
+                message: 'Adjust inputs to simulate growth trajectory.',
+                child: Icon(Icons.info_outline, color: Colors.grey, size: 15),
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           EditableSliderInput(
-            label: 'Initial Lump Sum',
-            value: _initialLumpSum,
+            label: 'Starting Deposit (Lump Sum)',
+            value: _startingDeposit,
             min: 0,
-            max: 20000000,
-            unit: '$_currencySymbol ',
+            max: 100000000,
+            unit: '$sym ',
             isPrefix: true,
-            onChanged: (v) => setState(() => _initialLumpSum = v),
+            onChanged: (v) => setState(() => _startingDeposit = v),
           ),
+          const SizedBox(height: 4),
           EditableSliderInput(
-            label: 'Monthly SIP',
-            value: _monthlySip,
-            min: 0,
-            max: 500000,
-            unit: '$_currencySymbol ',
+            label: 'Monthly Investment (SIP)',
+            value: _monthlyContribution,
+            min: 500,
+            max: 1000000,
+            unit: '$sym ',
             isPrefix: true,
-            onChanged: (v) => setState(() => _monthlySip = v),
+            onChanged: (v) => setState(() => _monthlyContribution = v),
           ),
+          const SizedBox(height: 4),
           EditableSliderInput(
-            label: 'Annual Step-Up %',
-            value: _stepUpPercent,
-            min: 0,
-            max: 50,
-            unit: '%',
-            onChanged: (v) => setState(() => _stepUpPercent = v),
-          ),
-          EditableSliderInput(
-            label: 'Equity Allocation %',
-            value: _equityPercent,
-            min: 0,
-            max: 100,
-            unit: '%',
-            onChanged: (v) => setState(() {
-              _equityPercent = v;
-              _debtPercent = 100 - v;
-            }),
-          ),
-          EditableSliderInput(
-            label: 'Equity Return %',
-            value: _equityReturnPercent,
-            min: 5,
+            label: 'Expected Return % (p.a.)',
+            value: _expectedReturn,
+            min: 4,
             max: 25,
             unit: '%',
             isDecimal: true,
-            onChanged: (v) => setState(() => _equityReturnPercent = v),
+            onChanged: (v) => setState(() => _expectedReturn = v),
           ),
+          const SizedBox(height: 4),
           EditableSliderInput(
-            label: 'Debt Return %',
-            value: _debtReturnPercent,
-            min: 3,
-            max: 15,
+            label: 'Annual SIP Step-Up %',
+            value: _annualStepUpPercent,
+            min: 0,
+            max: 25,
             unit: '%',
             isDecimal: true,
-            onChanged: (v) => setState(() => _debtReturnPercent = v),
+            onChanged: (v) => setState(() => _annualStepUpPercent = v),
           ),
+          const SizedBox(height: 4),
           EditableSliderInput(
-            label: 'Inflation % (p.a.)',
+            label: 'Investment Horizon (Years)',
+            value: _investmentHorizonYears.toDouble(),
+            min: 1,
+            max: 35,
+            unit: 'Yrs',
+            onChanged: (v) =>
+                setState(() => _investmentHorizonYears = v.toInt()),
+          ),
+          const SizedBox(height: 4),
+          EditableSliderInput(
+            label: 'Expected Inflation % (p.a.)',
             value: _inflationPercent,
             min: 0,
-            max: 15,
+            max: 12,
             unit: '%',
             isDecimal: true,
             onChanged: (v) => setState(() => _inflationPercent = v),
-          ),
-          EditableSliderInput(
-            label: 'Horizon (Years)',
-            value: _totalYears.toDouble(),
-            min: 1,
-            max: 40,
-            unit: 'Yrs',
-            onChanged: (v) => setState(() => _totalYears = v.toInt()),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDashboardContent(
-    List<GrowthProjection> results,
-    GrowthProjection last,
+  Widget _buildDashboard(
+    List<PlannerChartItem> chartData,
+    PlannerChartItem? lastItem,
+    SettingsService settings,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             _kpiCard(
-              'Gross Corpus',
-              _formatCurrency(last.corpusValue),
-              const Color(0xFF10B981),
-              const Color(0xFF064E3B),
-            ),
-            _kpiCard(
-              'Post-Tax (12.5%)',
-              _formatCurrency(last.postTaxCorpus),
+              'Total Invested',
+              lastItem != null
+                  ? settings.formatCurrency(lastItem.totalInvested)
+                  : '${settings.currencySymbol}0',
               const Color(0xFF38BDF8),
               const Color(0xFF0C4A6E),
             ),
             _kpiCard(
-              'Est. Capital Tax',
-              _formatCurrency(last.totalTax),
-              Colors.orangeAccent,
+              'Wealth Gained',
+              lastItem != null
+                  ? settings.formatCurrency(lastItem.totalReturns)
+                  : '${settings.currencySymbol}0',
+              const Color(0xFFF59E0B),
               const Color(0xFF78350F),
             ),
             _kpiCard(
-              'Real Purchasing Power',
-              _formatCurrency(last.inflationAdjustedValue),
-              const Color(0xFFA855F7),
-              const Color(0xFF581C87),
+              'Projected Corpus',
+              lastItem != null
+                  ? settings.formatCurrency(lastItem.totalCorpus)
+                  : '${settings.currencySymbol}0',
+              const Color(0xFF10B981),
+              const Color(0xFF064E3B),
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF064E3B).withOpacity(0.35),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF10B981)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  'Year $_totalYears Terminal Corpus: ${_formatCurrency(last.corpusValue)} reached.',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
+        const SizedBox(height: 10),
+        PlannerTrajectoryChart(
+          data: chartData,
+          currencySymbol: settings.currencySymbol,
+          formatCurrency: (v) => settings.formatCurrency(v),
+          onExportPdf: () => _handlePdfExport(chartData, settings),
+        ),
+        if (lastItem != null && widget.onNavigateToSwpWithCorpus != null) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF334155)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.account_balance_outlined,
+                  color: Color(0xFF38BDF8),
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Simulate SWP on ${settings.formatCurrency(lastItem.totalCorpus)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
-                  foregroundColor: Colors.black,
-                  visualDensity: VisualDensity.compact,
-                ),
-                icon: const Icon(Icons.arrow_forward, size: 14),
-                label: const Text(
-                  'Simulate Retirement SWP',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-                onPressed: () {
-                  widget.onNavigateToSwpWithCorpus?.call(last.corpusValue);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Transferred ${_formatCurrency(last.corpusValue)} to Retirement SWP Simulator!',
-                      ),
-                      backgroundColor: const Color(0xFF10B981),
+                ElevatedButton(
+                  onPressed: () =>
+                      widget.onNavigateToSwpWithCorpus!(lastItem.totalCorpus),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF38BDF8),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
                     ),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        ProjectionScheduleTiles(
-          title: 'Yearly Projection Schedule',
-          primaryLabel: 'Gross Corpus',
-          secondaryLabel: 'Total Invested',
-          cashflowLabel: 'Monthly SIP',
-          taxOrYieldLabel: 'Est. Tax (LTCG)',
-          formatCurrency: _formatCurrency,
-          onExportPdf: () => _handlePdfExport(results),
-          items: results
-              .map(
-                (r) => ScheduleTileItem(
-                  year: r.year,
-                  primaryMetric: r.corpusValue,
-                  secondaryMetric: r.totalInvested,
-                  monthlyCashflow: r.monthlySip,
-                  taxOrYield: r.totalTax,
-                  realPurchasingPower: r.inflationAdjustedValue,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text(
+                    'Simulate SWP',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
                 ),
-              )
-              .toList(),
-        ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -419,30 +464,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _kpiCard(String title, String val, Color textC, Color bgC) {
     return Expanded(
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
-          color: bgC.withOpacity(0.4),
+          color: bgC.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: textC.withOpacity(0.5)),
+          border: Border.all(color: textC.withValues(alpha: 0.4)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               title,
-              style: const TextStyle(fontSize: 9.5, color: Colors.grey),
+              style: const TextStyle(fontSize: 9, color: Colors.grey),
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 4),
-            Text(
-              val,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: textC,
+            const SizedBox(height: 3),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                val,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: textC,
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

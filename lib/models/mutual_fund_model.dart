@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 class MutualFundScheme {
   final int schemeCode;
   final String schemeName;
@@ -61,14 +59,14 @@ class MutualFundScheme {
   }
 
   Map<String, dynamic> toJson() => {
-    'schemeCode': schemeCode,
-    'schemeName': schemeName,
-    'nav': nav,
-    'date': date,
-    'isAdded': isAdded,
-    'allocatedSip': allocatedSip,
-    'category': category,
-  };
+        'schemeCode': schemeCode,
+        'schemeName': schemeName,
+        'nav': nav,
+        'date': date,
+        'isAdded': isAdded,
+        'allocatedSip': allocatedSip,
+        'category': category,
+      };
 
   @override
   bool operator ==(Object other) =>

@@ -54,8 +54,7 @@ class _LoanArbitrageScreenState extends State<LoanArbitrageScreen> {
   Widget build(BuildContext context) {
     final int totalMonths = _tenureYearsRemaining * 12;
     final double monthlyRate = (_loanInterestRate / 100) / 12;
-    final double standardEmi =
-        _outstandingLoan *
+    final double standardEmi = _outstandingLoan *
         monthlyRate *
         math.pow(1 + monthlyRate, totalMonths) /
         (math.pow(1 + monthlyRate, totalMonths) - 1);
@@ -87,9 +86,9 @@ class _LoanArbitrageScreenState extends State<LoanArbitrageScreen> {
 
     final double totalInterestSaved =
         (standardTotalInterest - prepayTotalInterest).clamp(
-          0.0,
-          double.infinity,
-        );
+      0.0,
+      double.infinity,
+    );
     final int monthsSaved = totalMonths - acceleratedMonths;
 
     final double monthlySipRate = (_equityReturnExpected / 100) / 12;
@@ -116,7 +115,7 @@ class _LoanArbitrageScreenState extends State<LoanArbitrageScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFF064E3B).withOpacity(0.4),
+                color: const Color(0xFF064E3B).withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: const Color(0xFF10B981)),
               ),
@@ -154,7 +153,7 @@ class _LoanArbitrageScreenState extends State<LoanArbitrageScreen> {
                       color: const Color(0xFF1E293B),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: const Color(0xFF38BDF8).withOpacity(0.5),
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.5),
                       ),
                     ),
                     child: Column(
@@ -179,7 +178,7 @@ class _LoanArbitrageScreenState extends State<LoanArbitrageScreen> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Debt-Free ${(monthsSaved / 12).toStringAsFixed(1)} Yrs Earlier (${acceleratedMonths} mos)',
+                          'Debt-Free ${(monthsSaved / 12).toStringAsFixed(1)} Yrs Earlier ($acceleratedMonths mos)',
                           style: const TextStyle(
                             color: Colors.grey,
                             fontSize: 10.5,
@@ -197,7 +196,7 @@ class _LoanArbitrageScreenState extends State<LoanArbitrageScreen> {
                       color: const Color(0xFF1E293B),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: const Color(0xFF10B981).withOpacity(0.5),
+                        color: const Color(0xFF10B981).withValues(alpha: 0.5),
                       ),
                     ),
                     child: Column(
@@ -397,9 +396,9 @@ class _LoanArbitrageScreenState extends State<LoanArbitrageScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

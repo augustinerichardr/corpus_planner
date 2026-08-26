@@ -112,8 +112,8 @@ class _AiAdvisorScreenState extends State<AiAdvisorScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: const [
+            const Row(
+              children: [
                 Icon(
                   Icons.workspace_premium,
                   color: Colors.amberAccent,
@@ -146,11 +146,11 @@ class _AiAdvisorScreenState extends State<AiAdvisorScreen> {
                 color: const Color(0xFF0F172A),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: const Color(0xFF10B981).withOpacity(0.3),
+                  color: const Color(0xFF10B981).withValues(alpha: 0.3),
                 ),
               ),
-              child: Column(
-                children: const [
+              child: const Column(
+                children: [
                   _ProFeatureRow('Unlimited AI Investment & Tax Queries'),
                   _ProFeatureRow('Multi-Goal Corpus Solvers & Backtesting'),
                   _ProFeatureRow('Full Portfolio Overlap & Risk Audits'),
@@ -197,7 +197,8 @@ class _AiAdvisorScreenState extends State<AiAdvisorScreen> {
       backgroundColor: const Color(0xFF0F172A),
       appBar: DashboardAppBar(
         title: 'AI Wealth Advisor (LLM)',
-        onCountryChanged: (_) {},
+        isPro: widget.isPaidUser,
+        onUpgradeTap: _showUpgradePaywall,
       ),
       body: Column(
         children: [
@@ -289,9 +290,8 @@ class _AiAdvisorScreenState extends State<AiAdvisorScreen> {
                 final isUser = msg['sender'] == 'user';
 
                 return Align(
-                  alignment: isUser
-                      ? Alignment.centerRight
-                      : Alignment.centerLeft,
+                  alignment:
+                      isUser ? Alignment.centerRight : Alignment.centerLeft,
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 620),
                     margin: const EdgeInsets.only(bottom: 10),
@@ -303,7 +303,7 @@ class _AiAdvisorScreenState extends State<AiAdvisorScreen> {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: isUser
-                            ? const Color(0xFF10B981).withOpacity(0.5)
+                            ? const Color(0xFF10B981).withValues(alpha: 0.5)
                             : Colors.white10,
                       ),
                     ),

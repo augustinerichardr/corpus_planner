@@ -245,10 +245,8 @@ class MutualFundsRepository {
   }) async {
     final masterList = await _ensureOfficialAmfiLoaded();
     final String clean = query.trim().toLowerCase();
-    final List<String> searchTokens = clean
-        .split(' ')
-        .where((t) => t.isNotEmpty)
-        .toList();
+    final List<String> searchTokens =
+        clean.split(' ').where((t) => t.isNotEmpty).toList();
 
     var list = masterList;
 
@@ -267,8 +265,7 @@ class MutualFundsRepository {
         final isDirect = lower.contains('direct');
         final isGrowth =
             lower.contains('growth') || lower.contains('growth option');
-        final isIdcw =
-            lower.contains('idcw') ||
+        final isIdcw = lower.contains('idcw') ||
             lower.contains('dividend') ||
             lower.contains('bonus') ||
             lower.contains('income distribution');
@@ -412,14 +409,13 @@ class MutualFundsRepository {
               1.0,
               latestDate.difference(launchDate).inDays / 365.25,
             );
-            final double retMax =
-                ((math.pow(
-                              currentNav / math.max(1.0, history.first.nav),
-                              1 / yearsTotal,
-                            ) -
-                            1) *
-                        100)
-                    .toDouble();
+            final double retMax = ((math.pow(
+                          currentNav / math.max(1.0, history.first.nav),
+                          1 / yearsTotal,
+                        ) -
+                        1) *
+                    100)
+                .toDouble();
 
             return MutualFundDetails(
               id: schemeCode.toString(),
@@ -503,9 +499,12 @@ class MutualFundsRepository {
     final lower = name.toLowerCase();
     final lowerCat = category.toLowerCase();
     if (lowerCat.contains('debt') || lowerCat.contains('liquid')) {
-      if (lower.contains('overnight')) return 'Nil (Zero Exit Load)';
-      if (lower.contains('liquid'))
+      if (lower.contains('overnight')) {
+        return 'Nil (Zero Exit Load)';
+      }
+      if (lower.contains('liquid')) {
         return 'Graduated exit load up to Day 6 (0.0070% to 0.0045%); Nil from Day 7 onwards';
+      }
       if (lower.contains('60 days') ||
           lower.contains('180 days') ||
           lower.contains('fmp') ||
@@ -576,27 +575,58 @@ class MutualFundsRepository {
 
   static String _extractAmc(String name) {
     final lower = name.toLowerCase();
-    if (lower.contains('quant')) return 'quant Mutual Fund';
-    if (lower.contains('dsp')) return 'DSP Mutual Fund';
-    if (lower.contains('sbi')) return 'SBI Mutual Fund';
-    if (lower.contains('hdfc')) return 'HDFC Mutual Fund';
-    if (lower.contains('icici')) return 'ICICI Prudential Mutual Fund';
-    if (lower.contains('parag parikh') || lower.contains('ppfas'))
+    if (lower.contains('quant')) {
+      return 'quant Mutual Fund';
+    }
+    if (lower.contains('dsp')) {
+      return 'DSP Mutual Fund';
+    }
+    if (lower.contains('sbi')) {
+      return 'SBI Mutual Fund';
+    }
+    if (lower.contains('hdfc')) {
+      return 'HDFC Mutual Fund';
+    }
+    if (lower.contains('icici')) {
+      return 'ICICI Prudential Mutual Fund';
+    }
+    if (lower.contains('parag parikh') || lower.contains('ppfas')) {
       return 'PPFAS Mutual Fund';
-    if (lower.contains('nippon')) return 'Nippon India Mutual Fund';
-    if (lower.contains('mirae')) return 'Mirae Asset Mutual Fund';
-    if (lower.contains('kotak')) return 'Kotak Mahindra Mutual Fund';
-    if (lower.contains('axis')) return 'Axis Mutual Fund';
-    if (lower.contains('tata')) return 'Tata Mutual Fund';
-    if (lower.contains('motilal')) return 'Motilal Oswal Mutual Fund';
-    if (lower.contains('bandhan')) return 'Bandhan Mutual Fund';
-    if (lower.contains('uti')) return 'UTI Mutual Fund';
-    if (lower.contains('sundaram')) return 'Sundaram Mutual Fund';
+    }
+    if (lower.contains('nippon')) {
+      return 'Nippon India Mutual Fund';
+    }
+    if (lower.contains('mirae')) {
+      return 'Mirae Asset Mutual Fund';
+    }
+    if (lower.contains('kotak')) {
+      return 'Kotak Mahindra Mutual Fund';
+    }
+    if (lower.contains('axis')) {
+      return 'Axis Mutual Fund';
+    }
+    if (lower.contains('tata')) {
+      return 'Tata Mutual Fund';
+    }
+    if (lower.contains('motilal')) {
+      return 'Motilal Oswal Mutual Fund';
+    }
+    if (lower.contains('bandhan')) {
+      return 'Bandhan Mutual Fund';
+    }
+    if (lower.contains('uti')) {
+      return 'UTI Mutual Fund';
+    }
+    if (lower.contains('sundaram')) {
+      return 'Sundaram Mutual Fund';
+    }
     return 'Indian Asset Management Company';
   }
 
   static double _estimateExpenseRatio(String name) {
-    if (name.toLowerCase().contains('direct')) return 0.55;
+    if (name.toLowerCase().contains('direct')) {
+      return 0.55;
+    }
     return 1.45;
   }
 
@@ -620,14 +650,24 @@ class MutualFundsRepository {
         lower.contains('gilt')) {
       return 'CRISIL Composite Bond Fund Index';
     }
-    if (lower.contains('small')) return 'NIFTY Smallcap 250 TRI';
-    if (lower.contains('mid')) return 'NIFTY Midcap 150 TRI';
-    if (lower.contains('large & mid') || lower.contains('large and mid'))
+    if (lower.contains('small')) {
+      return 'NIFTY Smallcap 250 TRI';
+    }
+    if (lower.contains('mid')) {
+      return 'NIFTY Midcap 150 TRI';
+    }
+    if (lower.contains('large & mid') || lower.contains('large and mid')) {
       return 'NIFTY LargeMidcap 250 TRI';
-    if (lower.contains('flexi') || lower.contains('multi'))
+    }
+    if (lower.contains('flexi') || lower.contains('multi')) {
       return 'NIFTY 500 TRI';
-    if (lower.contains('large')) return 'NIFTY 50 TRI';
-    if (lower.contains('hybrid')) return 'CRISIL Hybrid 35+65 Aggressive Index';
+    }
+    if (lower.contains('large')) {
+      return 'NIFTY 50 TRI';
+    }
+    if (lower.contains('hybrid')) {
+      return 'CRISIL Hybrid 35+65 Aggressive Index';
+    }
     return 'NIFTY 500 TRI';
   }
 

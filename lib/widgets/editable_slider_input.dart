@@ -97,7 +97,7 @@ class _EditableSliderInputState extends State<EditableSliderInput> {
                   color: const Color(0xFF0F172A),
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(
-                    color: const Color(0xFF10B981).withOpacity(0.5),
+                    color: const Color(0xFF10B981).withValues(alpha: 0.5),
                   ),
                 ),
                 child: Row(

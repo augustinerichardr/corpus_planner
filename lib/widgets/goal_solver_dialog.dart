@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../financial_engine.dart';
 import '../utils/formatters.dart';
+import '../utils/goal_solver.dart';
 
 class GoalSolverDialog extends StatefulWidget {
   final double initialLumpSum;
@@ -90,7 +90,9 @@ class _GoalSolverDialogState extends State<GoalSolverDialog> {
 
   // Goal -> Monthly SIP
   void _recalculateSipFromGoal(double goal) {
-    if (goal <= 0) return;
+    if (goal <= 0) {
+      return;
+    }
     double low = 0;
     double high = goal;
     double reqSip = 0;
@@ -108,7 +110,7 @@ class _GoalSolverDialogState extends State<GoalSolverDialog> {
         totalYears: widget.totalYears,
       );
 
-      if (results.last.corpusValue >= goal) {
+      if (results.isNotEmpty && results.last.corpusValue >= goal) {
         reqSip = mid;
         high = mid;
       } else {
@@ -135,7 +137,7 @@ class _GoalSolverDialogState extends State<GoalSolverDialog> {
     );
 
     setState(() {
-      targetGoal = results.last.corpusValue;
+      targetGoal = results.isNotEmpty ? results.last.corpusValue : 0;
     });
   }
 
@@ -169,7 +171,7 @@ class _GoalSolverDialogState extends State<GoalSolverDialog> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFF00E676).withOpacity(0.15),
+              color: const Color(0xFF00E676).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.calculate, color: Color(0xFF00E676)),
@@ -286,9 +288,9 @@ class _GoalSolverDialogState extends State<GoalSolverDialog> {
               padding: const EdgeInsets.all(16),
               width: double.infinity,
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
+                color: Colors.green.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green.withOpacity(0.3)),
+                border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

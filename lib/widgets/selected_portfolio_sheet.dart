@@ -71,7 +71,7 @@ class SelectedPortfolioSheet extends StatelessWidget {
                     color: const Color(0xFF0F172A),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: const Color(0xFF10B981).withOpacity(0.3),
+                      color: const Color(0xFF10B981).withValues(alpha: 0.3),
                     ),
                   ),
                   child: Row(

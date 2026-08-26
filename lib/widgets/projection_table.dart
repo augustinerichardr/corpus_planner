@@ -109,11 +109,11 @@ class ProjectionScheduleTiles extends StatelessWidget {
                 final item = items[index];
                 final double ratio =
                     item.secondaryMetric > 0 && item.primaryMetric > 0
-                    ? (item.secondaryMetric / item.primaryMetric).clamp(
-                        0.0,
-                        1.0,
-                      )
-                    : 0.5;
+                        ? (item.secondaryMetric / item.primaryMetric).clamp(
+                            0.0,
+                            1.0,
+                          )
+                        : 0.5;
 
                 return Container(
                   padding: const EdgeInsets.all(12),
@@ -122,7 +122,7 @@ class ProjectionScheduleTiles extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: item.isWarning
-                          ? const Color(0xFFEF4444).withOpacity(0.6)
+                          ? const Color(0xFFEF4444).withValues(alpha: 0.6)
                           : const Color(0xFF334155),
                     ),
                   ),
@@ -143,7 +143,8 @@ class ProjectionScheduleTiles extends StatelessWidget {
                               color: const Color(0xFF0F172A),
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(
-                                color: const Color(0xFF10B981).withOpacity(0.4),
+                                color: const Color(0xFF10B981)
+                                    .withValues(alpha: 0.4),
                               ),
                             ),
                             child: Text(

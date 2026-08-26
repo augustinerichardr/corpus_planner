@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 
 class ScheduleTileItem {
   final int year;
-  final double primaryMetric; // SIP: Gross Corpus | SWP: Remaining Corpus
-  final double secondaryMetric; // SIP: Total Invested | SWP: Total Withdrawn
-  final double monthlyCashflow; // SIP: Monthly SIP | SWP: Monthly Income
-  final double taxOrYield; // SIP: Est Tax | SWP: Yield Earned
+  final double primaryMetric;
+  final double secondaryMetric;
+  final double monthlyCashflow;
+  final double taxOrYield;
   final double realPurchasingPower;
   final bool isWarning;
 
-  ScheduleTileItem({
+  const ScheduleTileItem({
     required this.year,
     required this.primaryMetric,
     required this.secondaryMetric,
@@ -22,211 +22,290 @@ class ScheduleTileItem {
 
 class ProjectionScheduleTiles extends StatelessWidget {
   final String title;
-  final String primaryLabel;
-  final String secondaryLabel;
-  final String cashflowLabel;
-  final String taxOrYieldLabel;
+  final String? summaryHeadline;
   final List<ScheduleTileItem> items;
   final String Function(double) formatCurrency;
-  final VoidCallback? onExportPdf;
-  final VoidCallback? onExportCsv;
+  final VoidCallback onExportPdf;
+  final bool isPro;
 
   const ProjectionScheduleTiles({
     super.key,
     required this.title,
-    required this.primaryLabel,
-    required this.secondaryLabel,
-    required this.cashflowLabel,
-    required this.taxOrYieldLabel,
+    this.summaryHeadline,
     required this.items,
     required this.formatCurrency,
-    this.onExportPdf,
-    this.onExportCsv,
+    required this.onExportPdf,
+    this.isPro = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Section Header
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Row(
-              children: [
-                if (onExportCsv != null)
-                  IconButton(
-                    icon: const Icon(
-                      Icons.table_view_outlined,
-                      color: Color(0xFF38BDF8),
-                      size: 18,
-                    ),
-                    tooltip: 'Export CSV',
-                    onPressed: onExportCsv,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                if (onExportPdf != null)
-                  IconButton(
-                    icon: const Icon(
-                      Icons.picture_as_pdf_outlined,
-                      color: Color(0xFF10B981),
-                      size: 18,
-                    ),
-                    tooltip: 'Export PDF Report',
-                    onPressed: onExportPdf,
-                    visualDensity: VisualDensity.compact,
-                  ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        // List of Interactive Milestone Tiles
-        ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: items.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (ctx, index) {
-            final item = items[index];
-            final double ratio =
-                item.secondaryMetric > 0 && item.primaryMetric > 0
-                ? (item.secondaryMetric / item.primaryMetric).clamp(0.0, 1.0)
-                : 0.5;
-
-            return Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: item.isWarning
-                      ? const Color(0xFFEF4444).withOpacity(0.6)
-                      : const Color(0xFF334155),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Row 1: Year badge and Primary Value
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: const Color(0xFF10B981).withOpacity(0.4),
-                          ),
-                        ),
-                        child: Text(
-                          'Year ${item.year}',
-                          style: const TextStyle(
-                            color: Color(0xFF10B981),
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Row with Title, Summary Runway, and Export PDF Button
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
                       ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                    ),
+                    if (summaryHeadline != null) ...[
+                      const SizedBox(height: 3),
+                      Row(
                         children: [
-                          Text(
-                            primaryLabel,
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 10,
-                            ),
+                          const Icon(
+                            Icons.all_inclusive,
+                            color: Color(0xFF38BDF8),
+                            size: 13,
                           ),
-                          Text(
-                            formatCurrency(item.primaryMetric),
-                            style: TextStyle(
-                              color: item.isWarning
-                                  ? const Color(0xFFEF4444)
-                                  : Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              summaryHeadline!,
+                              style: const TextStyle(
+                                color: Color(0xFF38BDF8),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Mini Progress Track
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(3),
-                    child: LinearProgressIndicator(
-                      value: ratio,
-                      backgroundColor: const Color(0xFF10B981),
-                      color: const Color(0xFF38BDF8),
-                      minHeight: 4,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Row 2: Secondary Metric & Real Purchasing Power
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _metricCol(
-                        secondaryLabel,
-                        formatCurrency(item.secondaryMetric),
-                        const Color(0xFF38BDF8),
-                      ),
-                      _metricCol(
-                        cashflowLabel,
-                        formatCurrency(item.monthlyCashflow),
-                        Colors.white70,
-                      ),
-                      _metricCol(
-                        taxOrYieldLabel,
-                        formatCurrency(item.taxOrYield),
-                        Colors.orangeAccent,
-                      ),
-                      _metricCol(
-                        'Real Power',
-                        formatCurrency(item.realPurchasingPower),
-                        const Color(0xFF10B981),
-                      ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
-            );
-          },
-        ),
-      ],
+              ElevatedButton.icon(
+                onPressed: onExportPdf,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F172A),
+                  foregroundColor: Colors.white,
+                  side: const BorderSide(color: Color(0xFF10B981)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+                icon: const Icon(
+                  Icons.picture_as_pdf,
+                  color: Color(0xFF10B981),
+                  size: 14,
+                ),
+                label: Row(
+                  children: [
+                    const Text(
+                      'Export PDF',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isPro
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFFF59E0B),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: Text(
+                        isPro ? 'PRO' : 'PRO ONLY',
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Responsive Multi-Column Tile Grid
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isTwoColumn = constraints.maxWidth > 580;
+              final crossAxisCount = isTwoColumn ? 2 : 1;
+
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: items.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  mainAxisExtent: 108,
+                ),
+                itemBuilder: (ctx, i) => _buildCompactYearTile(items[i]),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _metricCol(String label, String val, Color color) {
+  Widget _buildCompactYearTile(ScheduleTileItem item) {
+    final profit = (item.primaryMetric - item.secondaryMetric).clamp(
+      0.0,
+      double.infinity,
+    );
+    final ratio = item.primaryMetric > 0
+        ? (item.secondaryMetric / item.primaryMetric).clamp(0.0, 1.0)
+        : 0.0;
+    final gainPercent =
+        item.secondaryMetric > 0 ? (profit / item.secondaryMetric) * 100 : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: item.isWarning
+              ? Colors.redAccent.withValues(alpha: 0.5)
+              : const Color(0xFF334155),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Top Row: Year Badge, Gain %, Gross Value
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      'Year ${item.year}',
+                      style: const TextStyle(
+                        color: Color(0xFF38BDF8),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '+${gainPercent.toStringAsFixed(0)}% ROI',
+                    style: const TextStyle(
+                      color: Color(0xFF10B981),
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                formatCurrency(item.primaryMetric),
+                style: const TextStyle(
+                  color: Color(0xFF10B981),
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+
+          // Micro Dual-Color Progress Gauge (Cyan = Invested, Emerald = Compounded Gains)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: SizedBox(
+              height: 4,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: (ratio * 100).round().clamp(1, 100),
+                    child: Container(color: const Color(0xFF38BDF8)),
+                  ),
+                  Expanded(
+                    flex: ((1 - ratio) * 100).round().clamp(0, 100),
+                    child: Container(color: const Color(0xFF10B981)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Compact Financial Matrix
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _metricColumn(
+                'Invested',
+                formatCurrency(item.secondaryMetric),
+                Colors.white70,
+              ),
+              _metricColumn(
+                'SIP/mo',
+                formatCurrency(item.monthlyCashflow),
+                Colors.grey,
+              ),
+              _metricColumn(
+                'Est. Tax',
+                formatCurrency(item.taxOrYield),
+                Colors.orangeAccent,
+              ),
+              _metricColumn(
+                'Real Power',
+                formatCurrency(item.realPurchasingPower),
+                const Color(0xFFA855F7),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metricColumn(String label, String val, Color color) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 9.5)),
-        const SizedBox(height: 1),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 8.5)),
         Text(
           val,
           style: TextStyle(
             color: color,
-            fontSize: 11,
+            fontSize: 10,
             fontWeight: FontWeight.w600,
           ),
         ),

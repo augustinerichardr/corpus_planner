@@ -8,15 +8,14 @@ class MilestoneBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isMilestone = tippingYear != null;
-    final Color themeColor = isMilestone
-        ? const Color(0xFF00E676)
-        : const Color(0xFF29B6F6);
+    final Color themeColor =
+        isMilestone ? const Color(0xFF00E676) : const Color(0xFF29B6F6);
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: themeColor.withOpacity(0.12),
+        color: themeColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: themeColor, width: 1),
       ),

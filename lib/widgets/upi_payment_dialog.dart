@@ -99,10 +99,10 @@ class UpiPaymentDialog extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF064E3B).withOpacity(0.4),
+                color: const Color(0xFF064E3B).withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: const Color(0xFF10B981).withOpacity(0.4),
+                  color: const Color(0xFF10B981).withValues(alpha: 0.4),
                 ),
               ),
               child: Row(

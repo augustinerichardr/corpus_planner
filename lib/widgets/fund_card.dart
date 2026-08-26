@@ -36,7 +36,7 @@ class FundCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 backgroundColor: scheme.isAdded
-                    ? const Color(0xFF10B981).withOpacity(0.2)
+                    ? const Color(0xFF10B981).withValues(alpha: 0.2)
                     : const Color(0xFF334155),
                 child: Text(
                   house.substring(0, house.length > 3 ? 3 : house.length),
