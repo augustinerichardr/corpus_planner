@@ -2,7 +2,7 @@
 
 **Effective Date:** August 28, 2026  
 **App Name:** CorpusIQ Planner  
-**Developer / Creator:** R Augustine Richard  
+**Developer / Creator:** Richard  
 **Contact Location:** India  
 
 ---
