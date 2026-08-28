@@ -3,7 +3,9 @@ import '../widgets/dashboard_app_bar.dart';
 import '../widgets/regulatory_disclaimer.dart';
 
 class BondsScreen extends StatefulWidget {
-  const BondsScreen({super.key});
+  final VoidCallback? onMenuPressed;
+
+  const BondsScreen({super.key, this.onMenuPressed});
 
   @override
   State<BondsScreen> createState() => _BondsScreenState();
@@ -148,7 +150,10 @@ class _BondsScreenState extends State<BondsScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
-      appBar: const DashboardAppBar(title: 'Bonds & Fixed Income Intelligence'),
+      appBar: DashboardAppBar(
+        title: 'Bonds & Fixed Income Intelligence',
+        onMenuPressed: widget.onMenuPressed,
+      ),
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         children: [

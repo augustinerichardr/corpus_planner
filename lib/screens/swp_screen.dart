@@ -1,7 +1,8 @@
+// lib/screens/swp_screen.dart
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../financial_engine.dart';
 import '../services/pdf_export_service.dart';
+import '../services/pro_service.dart';
 import '../services/settings_service.dart';
 import '../widgets/editable_slider_input.dart';
 import '../widgets/projection_table.dart';
@@ -12,8 +13,13 @@ import 'pricing_screen.dart';
 
 class SwpScreen extends StatefulWidget {
   final double? initialCorpusOverride;
+  final VoidCallback? onMenuPressed;
 
-  const SwpScreen({super.key, this.initialCorpusOverride});
+  const SwpScreen({
+    super.key,
+    this.initialCorpusOverride,
+    this.onMenuPressed,
+  });
 
   @override
   State<SwpScreen> createState() => _SwpScreenState();
@@ -36,14 +42,24 @@ class _SwpScreenState extends State<SwpScreen> {
       _monthlyWithdrawal =
           ((_startingCorpus * 0.04) / 12).clamp(100.0, 1000000.0);
     }
-    _loadProStatus();
+    _isPro = ProService.isProNotifier.value;
+    ProService.isProNotifier.addListener(_onProStatusChanged);
   }
 
-  Future<void> _loadProStatus() async {
-    final sp = await SharedPreferences.getInstance();
+  @override
+  void dispose() {
+    ProService.isProNotifier.removeListener(_onProStatusChanged);
+    super.dispose();
+  }
+
+  void _onProStatusChanged() {
     if (mounted) {
-      setState(() => _isPro = sp.getBool('is_pro_unlocked') ?? false);
+      setState(() => _isPro = ProService.isProNotifier.value);
     }
+  }
+
+  Future<void> _openPricingModal() async {
+    await PricingModal.show(context);
   }
 
   @override
@@ -69,14 +85,12 @@ class _SwpScreenState extends State<SwpScreen> {
 
   void _handlePdfExport(List<SwpProjection> swpResults, SwpProjection? lastSwp,
       SettingsService settings) async {
-    final sp = await SharedPreferences.getInstance();
-    final isPro = sp.getBool('is_pro_unlocked') ?? false;
+    final isPro = ProService.isProNotifier.value;
 
     if (!isPro) {
       if (!mounted) return;
       final upgraded = await PricingModal.show(context);
       if (upgraded == true) {
-        setState(() => _isPro = true);
         _executePdfExport(swpResults, lastSwp, settings);
       }
       return;
@@ -141,7 +155,8 @@ class _SwpScreenState extends State<SwpScreen> {
           appBar: DashboardAppBar(
             title: 'Retirement SWP Simulator',
             isPro: _isPro,
-            onUpgradeTap: () => PricingModal.show(context),
+            onUpgradeTap: _openPricingModal,
+            onMenuPressed: widget.onMenuPressed,
           ),
           body: Column(
             children: [

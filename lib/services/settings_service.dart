@@ -6,6 +6,8 @@ class SettingsService extends ChangeNotifier {
   factory SettingsService() => _instance;
   SettingsService._internal();
 
+  static SettingsService get instance => _instance;
+
   ThemeMode _themeMode = ThemeMode.dark;
   double _fontScale = 1.0;
   String _defaultCurrency = 'INR (₹)';
@@ -13,14 +15,12 @@ class SettingsService extends ChangeNotifier {
   double _defaultExpectedReturn = 12.0;
   String _taxRegime = 'New Regime (FY 2025-26)';
 
-  // Wealth Accumulation Pro Suite Toggles
   bool _isMonteCarloEnabled = false;
   bool _isMultiSegmentInflationEnabled = false;
   bool _isBlackSwanModeEnabled = false;
   bool _isTaxHarvestingEnabled = false;
   bool _isInstitutionalPdfEnabled = false;
 
-  // Retirement Decumulation Pro Suite Toggles
   bool _isSorrEnabled = false;
   bool _isTaxAwareSwpEnabled = false;
   bool _isGuardrailsEnabled = false;
@@ -34,14 +34,12 @@ class SettingsService extends ChangeNotifier {
   String get taxRegime => _taxRegime;
   bool get isOldRegime => _taxRegime.contains('Old Regime');
 
-  // Getters for Accumulation Pro Features
   bool get isMonteCarloEnabled => _isMonteCarloEnabled;
   bool get isMultiSegmentInflationEnabled => _isMultiSegmentInflationEnabled;
   bool get isBlackSwanModeEnabled => _isBlackSwanModeEnabled;
   bool get isTaxHarvestingEnabled => _isTaxHarvestingEnabled;
   bool get isInstitutionalPdfEnabled => _isInstitutionalPdfEnabled;
 
-  // Getters for Decumulation Pro Features
   bool get isSorrEnabled => _isSorrEnabled;
   bool get isTaxAwareSwpEnabled => _isTaxAwareSwpEnabled;
   bool get isGuardrailsEnabled => _isGuardrailsEnabled;
@@ -80,24 +78,38 @@ class SettingsService extends ChangeNotifier {
   String formatCurrency(double val) {
     final sym = currencySymbol;
     if (isIndianCurrency) {
-      if (val >= 10000000)
+      if (val >= 10000000) {
         return '$sym${(val / 10000000).toStringAsFixed(2)} Cr';
+      }
       if (val >= 100000) return '$sym${(val / 100000).toStringAsFixed(2)} L';
       if (val >= 1000) return '$sym${(val / 1000).toStringAsFixed(1)} K';
       return '$sym${val.round()}';
     }
     if (_defaultCurrency.contains('JPY') || _defaultCurrency.contains('KRW')) {
-      if (val >= 1000000000)
+      if (val >= 1000000000) {
         return '$sym${(val / 1000000000).toStringAsFixed(2)}B';
+      }
       if (val >= 1000000) return '$sym${(val / 1000000).toStringAsFixed(1)}M';
       if (val >= 1000) return '$sym${(val / 1000).toStringAsFixed(0)}K';
       return '$sym${val.round()}';
     }
-    if (val >= 1000000000)
+    if (val >= 1000000000) {
       return '$sym${(val / 1000000000).toStringAsFixed(2)}B';
+    }
     if (val >= 1000000) return '$sym${(val / 1000000).toStringAsFixed(2)}M';
     if (val >= 1000) return '$sym${(val / 1000).toStringAsFixed(1)}K';
     return '$sym${val.round()}';
+  }
+
+  double calculateAnnualHomeLoanTaxShield({
+    required double annualInterestPaid,
+    double taxSlabRate = 0.30,
+  }) {
+    const double maxInterestCap = 200000.0;
+    final eligibleInterest = annualInterestPaid > maxInterestCap
+        ? maxInterestCap
+        : annualInterestPaid;
+    return eligibleInterest * taxSlabRate;
   }
 
   Future<void> init() async {

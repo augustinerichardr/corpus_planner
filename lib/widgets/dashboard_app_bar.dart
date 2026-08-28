@@ -1,16 +1,20 @@
+// lib/widgets/dashboard_app_bar.dart
 import 'package:flutter/material.dart';
 import '../services/pro_service.dart';
+import '../screens/pricing_screen.dart';
 
 class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final bool? isPro;
   final VoidCallback? onUpgradeTap;
+  final VoidCallback? onMenuPressed;
 
   const DashboardAppBar({
     super.key,
     required this.title,
     this.isPro,
     this.onUpgradeTap,
+    this.onMenuPressed,
   });
 
   @override
@@ -25,7 +29,17 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
       backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
       elevation: 0,
       scrolledUnderElevation: 0,
-      titleSpacing: isMobile ? 8 : 16,
+      leading: onMenuPressed != null
+          ? IconButton(
+              icon: Icon(
+                Icons.menu_rounded,
+                color: isDark ? Colors.white : const Color(0xFF1E293B),
+              ),
+              onPressed: onMenuPressed,
+            )
+          : null,
+      automaticallyImplyLeading: false,
+      titleSpacing: onMenuPressed != null ? 0 : (isMobile ? 8 : 16),
       title: Text(
         title,
         maxLines: 1,
@@ -37,21 +51,29 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ),
       actions: [
-        // Forced Pro Active state for Google Play Review compliance
         ValueListenableBuilder<bool>(
           valueListenable: ProService.isProNotifier,
           builder: (context, globalIsPro, child) {
+            final proActive = isPro ?? globalIsPro;
             return Padding(
               padding: const EdgeInsets.only(right: 12),
               child: InkWell(
                 onTap: () {
-                  // Safe message instead of triggering payment modal
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Institutional Pro Suite is fully active."),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
+                  if (!proActive) {
+                    if (onUpgradeTap != null) {
+                      onUpgradeTap!();
+                    } else {
+                      PricingModal.show(context);
+                    }
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content:
+                            Text("Institutional Pro Suite is fully active."),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
                 },
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
@@ -60,10 +82,16 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
                     vertical: isMobile ? 4 : 6,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                    color: (proActive
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFFF59E0B))
+                        .withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.5),
+                      color: (proActive
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFFF59E0B))
+                          .withValues(alpha: 0.5),
                       width: 1,
                     ),
                   ),
@@ -71,17 +99,23 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.verified_rounded,
+                        proActive
+                            ? Icons.verified_rounded
+                            : Icons.workspace_premium_rounded,
                         size: isMobile ? 13 : 15,
-                        color: const Color(0xFF10B981),
+                        color: proActive
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFFF59E0B),
                       ),
                       const SizedBox(width: 4),
-                      const Text(
-                        'PRO ACTIVE',
+                      Text(
+                        proActive ? 'PRO ACTIVE' : 'Upgrade',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF10B981),
+                          color: proActive
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFFF59E0B),
                         ),
                       ),
                     ],

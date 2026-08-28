@@ -1,18 +1,24 @@
+// lib/screens/arbitrage_screen.dart
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../widgets/editable_slider_input.dart';
 import '../widgets/dashboard_app_bar.dart';
 
-class LoanArbitrageScreen extends StatefulWidget {
+class ArbitrageScreen extends StatefulWidget {
   final double? initialLoanOverride;
+  final VoidCallback? onMenuPressed;
 
-  const LoanArbitrageScreen({super.key, this.initialLoanOverride});
+  const ArbitrageScreen({
+    super.key,
+    this.initialLoanOverride,
+    this.onMenuPressed,
+  });
 
   @override
-  State<LoanArbitrageScreen> createState() => _LoanArbitrageScreenState();
+  State<ArbitrageScreen> createState() => _ArbitrageScreenState();
 }
 
-class _LoanArbitrageScreenState extends State<LoanArbitrageScreen> {
+class _ArbitrageScreenState extends State<ArbitrageScreen> {
   double _outstandingLoan = 3500000;
   double _loanInterestRate = 8.5;
   int _tenureYearsRemaining = 15;
@@ -28,7 +34,7 @@ class _LoanArbitrageScreenState extends State<LoanArbitrageScreen> {
   }
 
   @override
-  void didUpdateWidget(covariant LoanArbitrageScreen oldWidget) {
+  void didUpdateWidget(covariant ArbitrageScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.initialLoanOverride != null &&
         widget.initialLoanOverride != oldWidget.initialLoanOverride &&
@@ -104,7 +110,10 @@ class _LoanArbitrageScreenState extends State<LoanArbitrageScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
-      appBar: const DashboardAppBar(title: 'Loan Prepayment vs. SIP Arbitrage'),
+      appBar: DashboardAppBar(
+        title: 'Loan Prepayment vs. SIP Arbitrage',
+        onMenuPressed: widget.onMenuPressed,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -246,8 +255,8 @@ class _LoanArbitrageScreenState extends State<LoanArbitrageScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: const [
+                  const Row(
+                    children: [
                       Icon(
                         Icons.school_outlined,
                         color: Color(0xFFF59E0B),

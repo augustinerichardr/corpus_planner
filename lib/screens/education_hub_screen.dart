@@ -12,10 +12,12 @@ import '../widgets/regulatory_disclaimer.dart';
 
 class EducationHubScreen extends StatefulWidget {
   final int initialTopicIndex;
+  final VoidCallback? onMenuPressed;
 
   const EducationHubScreen({
     super.key,
     this.initialTopicIndex = 0,
+    this.onMenuPressed,
   });
 
   @override
@@ -93,8 +95,9 @@ class _EducationHubScreenState extends State<EducationHubScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
-      appBar: const DashboardAppBar(
+      appBar: DashboardAppBar(
         title: 'Financial Knowledge & Decision Tree',
+        onMenuPressed: widget.onMenuPressed,
       ),
       body: SafeArea(
         child: LayoutBuilder(

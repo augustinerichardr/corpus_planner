@@ -1,7 +1,8 @@
+// lib/screens/dashboard_screen.dart
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../financial_engine.dart';
 import '../services/pdf_export_service.dart';
+import '../services/pro_service.dart';
 import '../services/settings_service.dart';
 import '../widgets/dashboard_app_bar.dart';
 import '../widgets/editable_slider_input.dart';
@@ -14,6 +15,7 @@ class DashboardScreen extends StatefulWidget {
   final double? monthlySipOverride;
   final Function(double terminalCorpus)? onNavigateToSwpWithCorpus;
   final VoidCallback? onNavigateToStudy;
+  final VoidCallback? onMenuPressed;
 
   const DashboardScreen({
     super.key,
@@ -21,6 +23,7 @@ class DashboardScreen extends StatefulWidget {
     this.monthlySipOverride,
     this.onNavigateToSwpWithCorpus,
     this.onNavigateToStudy,
+    this.onMenuPressed,
   });
 
   @override
@@ -49,21 +52,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (widget.monthlySipOverride != null) {
       _monthlyContribution = widget.monthlySipOverride!;
     }
-    _loadProStatus();
+
+    _isPro = ProService.isProNotifier.value;
+    ProService.isProNotifier.addListener(_onProStatusChanged);
   }
 
-  Future<void> _loadProStatus() async {
-    final sp = await SharedPreferences.getInstance();
+  @override
+  void dispose() {
+    ProService.isProNotifier.removeListener(_onProStatusChanged);
+    super.dispose();
+  }
+
+  void _onProStatusChanged() {
     if (mounted) {
-      setState(() => _isPro = sp.getBool('is_pro_unlocked') ?? false);
+      setState(() => _isPro = ProService.isProNotifier.value);
     }
   }
 
   Future<void> _openPricingModal() async {
-    final upgraded = await PricingModal.show(context);
-    if (upgraded == true) {
-      _loadProStatus();
-    }
+    await PricingModal.show(context);
   }
 
   @override
@@ -81,14 +88,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _handlePdfExport(
       List<PlannerChartItem> chartData, SettingsService settings) async {
-    final sp = await SharedPreferences.getInstance();
-    final isPro = sp.getBool('is_pro_unlocked') ?? false;
+    final isPro = ProService.isProNotifier.value;
 
     if (!isPro) {
       if (!mounted) return;
       final upgraded = await PricingModal.show(context);
       if (upgraded == true) {
-        setState(() => _isPro = true);
         _executePdfExport(chartData, settings);
       }
       return;
@@ -213,6 +218,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             title: 'Corpus Wealth Simulator',
             isPro: _isPro,
             onUpgradeTap: _openPricingModal,
+            onMenuPressed: widget.onMenuPressed,
           ),
           body: Column(
             children: [

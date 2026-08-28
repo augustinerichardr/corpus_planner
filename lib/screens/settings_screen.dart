@@ -3,10 +3,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/settings_service.dart';
 import '../services/backup_vault_service.dart';
 import '../widgets/settings/settings_components.dart';
+import '../widgets/dashboard_app_bar.dart';
 import 'pricing_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final VoidCallback? onMenuPressed;
+
+  const SettingsScreen({super.key, this.onMenuPressed});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -42,6 +45,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor:
           isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      appBar: DashboardAppBar(
+        title: 'App Settings',
+        onMenuPressed: widget.onMenuPressed,
+      ),
       body: AnimatedBuilder(
         animation: settings,
         builder: (context, _) {
@@ -440,7 +447,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         Switch(
           value: val,
-          activeColor: const Color(0xFF10B981),
+          activeThumbColor: const Color(0xFF10B981),
           onChanged: onChanged,
         ),
       ],

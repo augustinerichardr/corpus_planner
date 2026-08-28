@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/portfolio_manager_screen.dart';
 import 'screens/swp_screen.dart';
@@ -14,6 +15,10 @@ import 'widgets/app_drawer.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('is_pro_unlocked', false);
+
   await ProService.init();
   await SettingsService().init();
   runApp(const CorpusPlannerApp());
@@ -136,20 +141,28 @@ class _MainShellScreenState extends State<MainShellScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isMobile = MediaQuery.of(context).size.width < 700;
 
+    final menuCallback =
+        isMobile ? () => _scaffoldKey.currentState?.openDrawer() : null;
+
     final List<Widget> screens = [
       DashboardScreen(
         initialLumpSumOverride: _plannerLumpSumOverride,
         monthlySipOverride: _plannerSipOverride,
         onNavigateToSwpWithCorpus: _handleSimulateInSwp,
         onNavigateToStudy: () => _navigateTo(6, 0),
+        onMenuPressed: menuCallback,
       ),
       PortfolioManagerScreen(
         key: ValueKey('portfolio_$_subTabIndex'),
         initialTabIndex: _subTabIndex,
         onSimulateInPlanner: _handleSimulateInPlanner,
         onSimulateInArbitrage: _handleSimulateInArbitrage,
+        onMenuPressed: menuCallback,
       ),
-      SwpScreen(initialCorpusOverride: _swpCorpusOverride),
+      SwpScreen(
+        initialCorpusOverride: _swpCorpusOverride,
+        onMenuPressed: menuCallback,
+      ),
       ValueListenableBuilder<bool>(
         valueListenable: ProService.isProNotifier,
         builder: (context, isPro, _) => MutualFundExplorerScreen(
@@ -157,93 +170,29 @@ class _MainShellScreenState extends State<MainShellScreen> {
           onAddSipToDashboard: (sipDelta) {
             if (_plannerSipOverride != null) {
               setState(
-                () => _plannerSipOverride = (_plannerSipOverride! + sipDelta)
-                    .clamp(0, double.infinity),
+                () => _plannerSipOverride =
+                    (_plannerSipOverride! + sipDelta).clamp(0, double.infinity),
               );
             }
           },
+          onMenuPressed: menuCallback,
         ),
       ),
-      const BondsScreen(),
-      const ArbitrageScreen(),
+      BondsScreen(onMenuPressed: menuCallback),
+      ArbitrageScreen(onMenuPressed: menuCallback),
       EducationHubScreen(
         key: ValueKey('edu_$_subTabIndex'),
         initialTopicIndex: _subTabIndex,
+        onMenuPressed: menuCallback,
       ),
-      const SettingsScreen(),
+      SettingsScreen(onMenuPressed: menuCallback),
     ];
 
     if (isMobile) {
       return Scaffold(
         key: _scaffoldKey,
-        backgroundColor: isDark
-            ? const Color(0xFF0F172A)
-            : const Color(0xFFF8FAFC),
-        appBar: AppBar(
-          backgroundColor: isDark
-              ? const Color(0xFF0F172A)
-              : const Color(0xFFFFFFFF),
-          elevation: 0.5,
-          leading: IconButton(
-            icon: Icon(
-              Icons.menu_rounded,
-              color: isDark ? Colors.white : const Color(0xFF1E293B),
-            ),
-            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-          ),
-          title: Text(
-            widget.screenTitles.length > _selectedIndex
-                ? widget.screenTitles[_selectedIndex]
-                : 'CorpusIQ Pro',
-            style: TextStyle(
-              fontSize: 15.5,
-              fontWeight: FontWeight.bold,
-              color: isDark ? Colors.white : const Color(0xFF1E293B),
-            ),
-          ),
-          actions: [
-            ValueListenableBuilder<bool>(
-              valueListenable: ProService.isProNotifier,
-              builder: (context, isPro, _) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: TextButton.icon(
-                    onPressed: () => PricingModal.show(context),
-                    icon: Icon(
-                      Icons.star_rounded,
-                      size: 16,
-                      color: isPro
-                          ? const Color(0xFF10B981)
-                          : const Color(0xFFF59E0B),
-                    ),
-                    label: Text(
-                      isPro ? 'PRO' : 'Upgrade',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: isPro
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFFF59E0B),
-                      ),
-                    ),
-                    style: TextButton.styleFrom(
-                      backgroundColor:
-                          (isPro
-                                  ? const Color(0xFF10B981)
-                                  : const Color(0xFFF59E0B))
-                              .withValues(alpha: 0.12),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
+        backgroundColor:
+            isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
         drawer: AppDrawer(
           selectedIndex: _selectedIndex,
           onNavigate: (primaryIndex, [subTabIndex]) {
@@ -256,9 +205,8 @@ class _MainShellScreenState extends State<MainShellScreen> {
     }
 
     return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF0F172A)
-          : const Color(0xFFF8FAFC),
+      backgroundColor:
+          isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
       body: Row(
         children: [
           _buildSidebar(isDark),

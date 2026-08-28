@@ -1,12 +1,10 @@
-import 'dart:convert';
-import 'dart:math';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../services/pro_service.dart';
 import '../widgets/pricing/plan_selection_view.dart';
-import '../widgets/pricing/payment_checkout_view.dart';
-import '../widgets/pricing/pricing_status_views.dart';
 
 class PricingModal extends StatefulWidget {
   const PricingModal({super.key});
@@ -25,37 +23,21 @@ class PricingModal extends StatefulWidget {
 }
 
 class _PricingModalState extends State<PricingModal> {
-  // Official Support Email
-  static const String _supportEmail = 'ganymedeearth24@gmail.com';
-
-  // Underlying payment credentials
-  static const String _defaultUpiId = '9994057227@kotakbank';
-  static const String _merchantName = 'Corpus Planner Pro';
-  static const String _bankName = 'Kotak Mahindra Bank';
-  static const String _accountName = 'Corpus Planner Pro';
-  static const String _accountNumber = '1848868289';
-  static const String _ifscCode = 'KKBK0008660';
-
-  static const String _webhookUrl =
-      'https://script.google.com/macros/s/AKfycbzsR2A2KAEwwl8PLna4J8tsSssWLhAfNmxzsyIHLseSQTZGItgeSBr3VbhCr_OY7iqIRg/exec';
-
   static final DateTime _launchPromoExpiry = DateTime(2026, 9, 27, 23, 59, 59);
 
+  // In-App Purchase variables
+  final InAppPurchase _inAppPurchase = InAppPurchase.instance;
+  late StreamSubscription<List<PurchaseDetails>> _subscription;
+  List<ProductDetails> _products = [];
+  bool _storeAvailable = false;
+
   int _selectedPlanIndex = 1;
-  int _paymentMethodTab = 0;
-  bool _showUpiPaymentView = false;
-  bool _isRegisteringOrder = false;
-  bool _isCheckingStatus = false;
-  bool _isPendingVerification = false;
-  bool _isPaymentComplete = false;
+  bool _isPurchasing = false;
 
   final TextEditingController _couponController = TextEditingController();
   String? _appliedCoupon;
   double _couponDiscountPercent = 0.0;
   String? _couponMessage;
-
-  // REMOVED 'late' keyword and assigned an empty string to prevent crashes during async loads
-  String _orderId = '';
 
   bool get _isLaunchPromoActive => DateTime.now().isBefore(_launchPromoExpiry);
   double get _baseAnnualPrice => _isLaunchPromoActive ? 199.0 : 499.0;
@@ -64,63 +46,126 @@ class _PricingModalState extends State<PricingModal> {
       _selectedPlanIndex == 1 ? _baseLifetimePrice : _baseAnnualPrice;
   double get _currentAmount =>
       (_currentBasePrice * (1.0 - _couponDiscountPercent)).roundToDouble();
-  String get _currentPlanName =>
-      _selectedPlanIndex == 1 ? 'Lifetime Freedom' : 'Annual Pro';
-
-  String get _maskedUpiId {
-    final parts = _defaultUpiId.split('@');
-    if (parts.length != 2) {
-      return _defaultUpiId;
-    }
-    final user = parts[0];
-    final handle = parts[1];
-    return user.length >= 4
-        ? '••${user.substring(2, 4)}${'•' * (user.length - 4)}@$handle'
-        : _defaultUpiId;
-  }
-
-  String get _upiPaymentUrl {
-    final note = '$_orderId $_currentPlanName';
-    return 'upi://pay?pa=$_defaultUpiId&pn=${Uri.encodeComponent(_merchantName)}&am=${_currentAmount.toStringAsFixed(2)}&cu=INR&tn=${Uri.encodeComponent(note)}&tr=$_orderId';
-  }
 
   @override
   void initState() {
     super.initState();
-    // Synchronously generate the default Order ID before the UI builds.
-    _orderId = 'CPP-${1000 + Random().nextInt(9000)}';
+    _checkExistingStatus();
 
-    // Now safely run the async checker
-    _checkExistingOrderOrGenerate();
+    // 1. Initialize Purchase Stream
+    final Stream<List<PurchaseDetails>> purchaseUpdated =
+        _inAppPurchase.purchaseStream;
+    _subscription = purchaseUpdated.listen((purchaseDetailsList) {
+      _listenToPurchaseUpdated(purchaseDetailsList);
+    }, onDone: () {
+      _subscription.cancel();
+    }, onError: (error) {
+      _showSnackbar('Store connection error.', isError: true);
+    });
+
+    // 2. Fetch Products from Google Play Console
+    _initStoreInfo();
   }
 
   @override
   void dispose() {
+    _subscription.cancel();
     _couponController.dispose();
     super.dispose();
   }
 
-  Future<void> _checkExistingOrderOrGenerate() async {
-    final prefs = await SharedPreferences.getInstance();
-    final existingPendingId = prefs.getString('pending_order_id');
-    final isAlreadyPro = prefs.getBool('is_pro_unlocked') ?? false;
+  Future<void> _checkExistingStatus() async {
+    final isAlreadyPro = await ProService.isProUser();
+    if (isAlreadyPro && mounted) {
+      Navigator.pop(context, true);
+    }
+  }
 
-    if (isAlreadyPro) {
-      if (mounted) setState(() => _isPaymentComplete = true);
+  Future<void> _initStoreInfo() async {
+    final bool isAvailable = await _inAppPurchase.isAvailable();
+    if (!isAvailable) {
+      setState(() => _storeAvailable = false);
       return;
     }
 
-    if (existingPendingId != null && existingPendingId.isNotEmpty) {
-      if (mounted) {
-        setState(() {
-          _orderId = existingPendingId;
-          _isPendingVerification = true;
-          _showUpiPaymentView = true;
-        });
+    // Ensure these IDs match exactly with your Google Play Console configuration
+    const Set<String> kIds = <String>{
+      'corpus_pro_lifetime',
+      'corpus_pro_annual'
+    };
+
+    final ProductDetailsResponse response =
+        await _inAppPurchase.queryProductDetails(kIds);
+
+    setState(() {
+      _storeAvailable = true;
+      _products = response.productDetails;
+    });
+  }
+
+  void _listenToPurchaseUpdated(
+      List<PurchaseDetails> purchaseDetailsList) async {
+    for (final PurchaseDetails purchaseDetails in purchaseDetailsList) {
+      if (purchaseDetails.status == PurchaseStatus.pending) {
+        setState(() => _isPurchasing = true);
+      } else {
+        setState(() => _isPurchasing = false);
+
+        if (purchaseDetails.status == PurchaseStatus.error) {
+          _showSnackbar('Purchase failed or was canceled.', isError: true);
+        } else if (purchaseDetails.status == PurchaseStatus.purchased ||
+            purchaseDetails.status == PurchaseStatus.restored) {
+          // STRICT UNLOCK: Only fires on verified Google purchase receipt
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('is_pro_unlocked', true);
+          ProService.isProNotifier.value = true;
+
+          if (mounted) {
+            _showSnackbar('Pro features unlocked successfully!');
+            Navigator.pop(context, true);
+          }
+        }
+        if (purchaseDetails.pendingCompletePurchase) {
+          await _inAppPurchase.completePurchase(purchaseDetails);
+        }
       }
-      _checkRemoteApprovalStatus(silent: true);
     }
-    // If no existing pending ID, we keep the synchronously generated _orderId from initState.
+  }
+
+  Future<void> _handlePurchase() async {
+    if (kIsWeb) {
+      _showSnackbar('Purchases are not supported on web.', isError: true);
+      return;
+    }
+
+    if (!_storeAvailable) {
+      _showSnackbar('Google Play Store is not available on this device.',
+          isError: true);
+      return;
+    }
+
+    if (_products.isEmpty) {
+      _showSnackbar('Products not found in Play Console! Check Product IDs.',
+          isError: true);
+      return;
+    }
+
+    final String targetId =
+        _selectedPlanIndex == 1 ? 'corpus_pro_lifetime' : 'corpus_pro_annual';
+
+    try {
+      final ProductDetails productDetails =
+          _products.firstWhere((p) => p.id == targetId);
+      final PurchaseParam purchaseParam =
+          PurchaseParam(productDetails: productDetails);
+
+      setState(() => _isPurchasing = true);
+      await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
+      // Flow hands over to _listenToPurchaseUpdated
+    } catch (e) {
+      setState(() => _isPurchasing = false);
+      _showSnackbar('Error: $e', isError: true);
+    }
   }
 
   void _applyCouponCode() {
@@ -144,7 +189,7 @@ class _PricingModalState extends State<PricingModal> {
         _appliedCoupon = code;
         _couponDiscountPercent = validReferralCodes[code]!;
         _couponMessage =
-            'Success! ${(_couponDiscountPercent * 100).toInt()}% referral discount applied.';
+            'Success! ${(_couponDiscountPercent * 100).toInt()}% discount applied.';
       });
       _showSnackbar('Promo code "$code" applied!');
     } else {
@@ -184,7 +229,7 @@ class _PricingModalState extends State<PricingModal> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Enter your email to receive an instant 20% coupon code for Lifetime Freedom access.',
+              'Enter your email to receive an instant 20% coupon code.',
               style: TextStyle(color: Colors.grey, fontSize: 11.5),
             ),
             const SizedBox(height: 12),
@@ -211,165 +256,14 @@ class _PricingModalState extends State<PricingModal> {
               foregroundColor: Colors.black,
             ),
             onPressed: () {
-              final email = emailCtrl.text.trim();
-              if (email.contains('@')) {
-                Navigator.pop(ctx);
-                _sendPromoLeadToSheet(email);
-              }
+              Navigator.pop(ctx);
+              _showSnackbar('Discount code requested successfully!');
             },
             child: const Text('Send Me Code'),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _sendPromoLeadToSheet(String email) async {
-    try {
-      final payload = {
-        'action': 'request_promo_code',
-        'email': email,
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-      await http
-          .post(
-            Uri.parse(_webhookUrl),
-            headers: {'Content-Type': 'text/plain'},
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 8));
-      if (!mounted) return;
-      _showSnackbar('Promo code sent to $email! Check your inbox.');
-    } catch (_) {
-      if (!mounted) return;
-      _showSnackbar('Request logged! We will send the code shortly.');
-    }
-  }
-
-  Future<void> _launchUpiIntent() async {
-    final uri = Uri.parse(_upiPaymentUrl);
-    try {
-      final launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-      if (!launched && mounted) {
-        _showSnackbar(
-          'No UPI app found. Please scan QR or use Bank Transfer.',
-          isError: true,
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        _showSnackbar(
-          'Could not launch UPI app. Please scan QR or use Bank Transfer.',
-          isError: true,
-        );
-      }
-    }
-  }
-
-  Future<void> _submitPendingOrder([String? utr]) async {
-    setState(() => _isRegisteringOrder = true);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('pending_order_id', _orderId);
-    await prefs.setString('pending_plan_name', _currentPlanName);
-
-    try {
-      final payload = {
-        'action': 'create_order',
-        'orderId': _orderId,
-        'planName': _currentPlanName,
-        'amount': _currentAmount.toStringAsFixed(0),
-        'referralCode': _appliedCoupon ?? 'DIRECT_LAUNCH',
-        if (utr != null && utr.isNotEmpty) 'utr': utr,
-      };
-      await http
-          .post(
-            Uri.parse(_webhookUrl),
-            headers: {'Content-Type': 'text/plain'},
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 10));
-    } catch (_) {}
-
-    if (mounted) {
-      setState(() {
-        _isRegisteringOrder = false;
-        _isPendingVerification = true;
-      });
-    }
-  }
-
-  Future<void> _checkRemoteApprovalStatus({bool silent = false}) async {
-    if (!silent) {
-      setState(() => _isCheckingStatus = true);
-    }
-
-    try {
-      final checkUrl = Uri.parse('$_webhookUrl?orderId=$_orderId');
-      final response =
-          await http.get(checkUrl).timeout(const Duration(seconds: 8));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['unlocked'] == true) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('is_pro_unlocked', true);
-          await prefs.setString('pro_plan_name', _currentPlanName);
-          await prefs.remove('pending_order_id');
-
-          if (mounted) {
-            setState(() {
-              _isCheckingStatus = false;
-              _isPendingVerification = false;
-              _isPaymentComplete = true;
-            });
-          }
-          return;
-        } else if (!silent && mounted) {
-          _showSnackbar(
-            'Verification in progress. Please allow up to 24 hours.',
-            isError: true,
-          );
-        }
-      }
-    } catch (_) {
-      if (!silent && mounted) {
-        _showSnackbar('Could not reach verification server.', isError: true);
-      }
-    }
-
-    if (!silent && mounted) {
-      setState(() => _isCheckingStatus = false);
-    }
-  }
-
-  Future<void> _sendPaymentProofEmail(String orderId) async {
-    final subject =
-        Uri.encodeComponent('Payment Assistance / Proof - Order $orderId');
-    final body = Uri.encodeComponent('''
-Hi Corpus Planner Support,
-
-I have initiated a payment for Corpus Planner Pro.
-
-Order ID: $orderId
-Payment App Used: (GPay / PhonePe / Paytm / Bank Transfer)
-12-Digit UTR: (Enter UTR if available)
-
-(Attached is my payment screenshot for quick verification)
-
-Thank you!
-''');
-
-    final mailtoUri =
-        Uri.parse('mailto:$_supportEmail?subject=$subject&body=$body');
-
-    try {
-      if (await canLaunchUrl(mailtoUri)) {
-        await launchUrl(mailtoUri);
-      }
-    } catch (_) {}
   }
 
   void _showSnackbar(String message, {bool isError = false}) {
@@ -380,85 +274,6 @@ Thank you!
         backgroundColor:
             isError ? const Color(0xFFEF4444) : const Color(0xFF10B981),
         duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  Widget _buildPaymentTrustAndSupportCard(String orderId) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF334155)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.verified_user_outlined,
-                  color: Color(0xFF10B981), size: 16),
-              SizedBox(width: 8),
-              Text(
-                '100% Safe & Direct Bank Verification',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            '• Your payment transfers directly via official NPCI UPI protocols to our verified bank account.\n'
-            '• Once submitted, access unlocks after reconciliation (15–30 mins).\n'
-            '• If your access is delayed or you encounter issues, your payment is 100% protected.',
-            style:
-                TextStyle(color: Color(0xFF94A3B8), fontSize: 10, height: 1.4),
-          ),
-          const Divider(color: Color(0xFF334155), height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Need Help with Payment?',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      _supportEmail,
-                      style:
-                          TextStyle(color: Color(0xFF38BDF8), fontSize: 10.5),
-                    ),
-                  ],
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _sendPaymentProofEmail(orderId),
-                icon: const Icon(Icons.mail_outline,
-                    size: 13, color: Color(0xFF38BDF8)),
-                label: const Text('Email Proof',
-                    style: TextStyle(fontSize: 10.5, color: Color(0xFF38BDF8))),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Color(0xFF38BDF8)),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -494,31 +309,21 @@ Thank you!
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
+                const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _isPaymentComplete
-                          ? 'Activation Confirmed'
-                          : (_isPendingVerification
-                              ? 'Verification in Progress'
-                              : (_showUpiPaymentView
-                                  ? 'Payment & Checkout'
-                                  : 'Upgrade to Corpus Planner Pro')),
-                      style: const TextStyle(
+                      'Upgrade to Corpus Planner Pro',
+                      style: TextStyle(
                         color: Colors.white,
                         fontSize: 17,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    SizedBox(height: 2),
                     Text(
-                      _isPaymentComplete
-                          ? 'All Pro features unlocked on this device'
-                          : (_isPendingVerification
-                              ? 'Order Reference: $_orderId'
-                              : 'Unlock automated wealth analytics & portfolio intelligence'),
-                      style: const TextStyle(
+                      'Unlock automated wealth analytics & portfolio intelligence',
+                      style: TextStyle(
                         color: Colors.grey,
                         fontSize: 11.5,
                       ),
@@ -526,99 +331,47 @@ Thank you!
                   ],
                 ),
                 IconButton(
-                  icon: Icon(
-                    _showUpiPaymentView &&
-                            !_isPendingVerification &&
-                            !_isPaymentComplete
-                        ? Icons.arrow_back
-                        : Icons.close,
-                    color: Colors.grey,
-                  ),
-                  onPressed: () {
-                    if (_showUpiPaymentView &&
-                        !_isPendingVerification &&
-                        !_isPaymentComplete) {
-                      setState(() => _showUpiPaymentView = false);
-                    } else {
-                      Navigator.pop(context, _isPaymentComplete);
-                    }
-                  },
+                  icon: const Icon(Icons.close, color: Colors.grey),
+                  onPressed: () => Navigator.pop(context, false),
                 ),
               ],
             ),
           ),
           const Divider(color: Colors.white10, height: 1),
           Expanded(
-            child: _isPaymentComplete
-                ? SuccessReceiptView(
-                    planName: _currentPlanName,
-                    amount: _currentAmount,
-                    orderId: _orderId,
-                    onBackToDashboard: () => Navigator.pop(context, true),
-                  )
-                : (_isPendingVerification
-                    ? Column(
-                        children: [
-                          Expanded(
-                            child: PendingVerificationView(
-                              orderId: _orderId,
-                              planName: _currentPlanName,
-                              isCheckingStatus: _isCheckingStatus,
-                              onCheckStatus: () => _checkRemoteApprovalStatus(),
-                            ),
-                          ),
-                          _buildPaymentTrustAndSupportCard(_orderId),
-                        ],
-                      )
-                    : (_showUpiPaymentView
-                        ? Column(
-                            children: [
-                              Expanded(
-                                child: PaymentCheckoutView(
-                                  planName: _currentPlanName,
-                                  orderId: _orderId,
-                                  currentAmount: _currentAmount,
-                                  appliedCoupon: _appliedCoupon,
-                                  paymentMethodTab: _paymentMethodTab,
-                                  onTabChange: (tab) =>
-                                      setState(() => _paymentMethodTab = tab),
-                                  onLaunchUpi: _launchUpiIntent,
-                                  upiPaymentUrl: _upiPaymentUrl,
-                                  defaultUpiId: _defaultUpiId,
-                                  maskedUpiId: _maskedUpiId,
-                                  bankName: _bankName,
-                                  accountName: _accountName,
-                                  accountNumber: _accountNumber,
-                                  ifscCode: _ifscCode,
-                                  isRegisteringOrder: _isRegisteringOrder,
-                                  onSubmitOrder: _submitPendingOrder,
-                                  onShowSnackbar: _showSnackbar,
-                                ),
-                              ),
-                              _buildPaymentTrustAndSupportCard(_orderId),
-                            ],
-                          )
-                        : PlanSelectionView(
-                            selectedPlanIndex: _selectedPlanIndex,
-                            onSelectPlan: (idx) =>
-                                setState(() => _selectedPlanIndex = idx),
-                            isLaunchPromoActive: _isLaunchPromoActive,
-                            remainingDays: remainingDays,
-                            annualPrice: annualPrice,
-                            lifetimePrice: lifetimePrice,
-                            baseAnnualPrice: _baseAnnualPrice,
-                            baseLifetimePrice: _baseLifetimePrice,
-                            appliedCoupon: _appliedCoupon,
-                            couponDiscountPercent: _couponDiscountPercent,
-                            couponMessage: _couponMessage,
-                            couponController: _couponController,
-                            onApplyCoupon: _applyCouponCode,
-                            onRemoveCoupon: _removeCoupon,
-                            onRequestCouponDialog: _showRequestCouponDialog,
-                            currentAmount: _currentAmount,
-                            onProceed: () =>
-                                setState(() => _showUpiPaymentView = true),
-                          ))),
+            child: Stack(
+              children: [
+                PlanSelectionView(
+                  selectedPlanIndex: _selectedPlanIndex,
+                  onSelectPlan: (idx) =>
+                      setState(() => _selectedPlanIndex = idx),
+                  isLaunchPromoActive: _isLaunchPromoActive,
+                  remainingDays: remainingDays,
+                  annualPrice: annualPrice,
+                  lifetimePrice: lifetimePrice,
+                  baseAnnualPrice: _baseAnnualPrice,
+                  baseLifetimePrice: _baseLifetimePrice,
+                  appliedCoupon: _appliedCoupon,
+                  couponDiscountPercent: _couponDiscountPercent,
+                  couponMessage: _couponMessage,
+                  couponController: _couponController,
+                  onApplyCoupon: _applyCouponCode,
+                  onRemoveCoupon: _removeCoupon,
+                  onRequestCouponDialog: _showRequestCouponDialog,
+                  currentAmount: _currentAmount,
+                  onProceed: _handlePurchase,
+                ),
+                if (_isPurchasing)
+                  Container(
+                    color: Colors.black54,
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF10B981),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),

@@ -6,7 +6,9 @@ import '../widgets/dashboard_app_bar.dart';
 import '../widgets/regulatory_disclaimer.dart';
 
 class ArbitrageScreen extends StatefulWidget {
-  const ArbitrageScreen({super.key});
+  final VoidCallback? onMenuPressed;
+
+  const ArbitrageScreen({super.key, this.onMenuPressed});
 
   @override
   State<ArbitrageScreen> createState() => _ArbitrageScreenState();
@@ -43,8 +45,9 @@ class _ArbitrageScreenState extends State<ArbitrageScreen> {
       builder: (context, _) {
         return Scaffold(
           backgroundColor: const Color(0xFF0F172A),
-          appBar: const DashboardAppBar(
+          appBar: DashboardAppBar(
             title: 'Arbitrage Engine & Spread Intelligence',
+            onMenuPressed: widget.onMenuPressed,
           ),
           body: SafeArea(
             child: LayoutBuilder(
@@ -124,11 +127,10 @@ class _ArbitrageScreenState extends State<ArbitrageScreen> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: const [
-                  Icon(Icons.swap_horizontal_circle_rounded,
-                      color: Color(0xFFF59E0B), size: 20),
+                  Text('🇮🇳', style: TextStyle(fontSize: 18)),
                   SizedBox(width: 8),
                   Text(
-                    'Market-Neutral Spread Capture',
+                    'NSE/BSE Market-Neutral Spread Capture',
                     style: TextStyle(
                         color: Colors.white,
                         fontSize: 14,
@@ -139,15 +141,15 @@ class _ArbitrageScreenState extends State<ArbitrageScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(
-                      color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+                      color: const Color(0xFF10B981).withValues(alpha: 0.4)),
                 ),
                 child: const Text(
-                  'ZERO DIRECTIONAL RISK',
+                  'SEBI FRAMEWORK',
                   style: TextStyle(
-                      color: Color(0xFFF59E0B),
+                      color: Color(0xFF10B981),
                       fontSize: 9.5,
                       fontWeight: FontWeight.bold),
                 ),
@@ -156,7 +158,7 @@ class _ArbitrageScreenState extends State<ArbitrageScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Simulate simultaneous Spot-Futures mispricings, tax-efficient short term cash parking, and home loan prepayment opportunity costs.',
+            'Simulate simultaneous NSE Cash-Futures mispricings, tax-efficient short-term cash parking (Sec 112A), and Indian home loan tax shields.',
             style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5),
           ),
         ],

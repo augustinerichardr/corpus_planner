@@ -1,9 +1,10 @@
+// lib/widgets/fund_detail_sheet.dart
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models/mutual_fund_model.dart';
 import '../services/settings_service.dart';
 
-class FundDetailSheet extends StatelessWidget {
+class FundDetailSheet extends StatefulWidget {
   final MutualFundScheme scheme;
   final String currencySymbol;
   final Map<String, String> details;
@@ -21,32 +22,41 @@ class FundDetailSheet extends StatelessWidget {
     required this.onAdd,
   });
 
-  List<FlSpot> _generateFundSpots(int seed, bool isSmallMid) {
-    // Generate realistic multi-year compounding curve
-    final double baseReturn = isSmallMid ? 0.18 : 0.13;
-    final List<double> multipliers = isSmallMid
-        ? [1.0, 1.22, 1.48, 1.34, 1.76, 2.18]
-        : [1.0, 1.15, 1.32, 1.28, 1.54, 1.82];
+  @override
+  State<FundDetailSheet> createState() => _FundDetailSheetState();
+}
 
-    return List.generate(
-        6, (i) => FlSpot(i.toDouble(), 100.0 * multipliers[i]));
+class _FundDetailSheetState extends State<FundDetailSheet> {
+  String _selectedTenure = '5Y';
+
+  int _getLaunchYear() {
+    final nameLower = widget.scheme.schemeName.toLowerCase();
+    if (nameLower.contains('grindlays') ||
+        nameLower.contains('fmp') ||
+        widget.scheme.schemeCode < 105000) {
+      return 2005;
+    } else if (widget.scheme.schemeCode % 3 == 0) {
+      return 2012;
+    } else if (widget.scheme.schemeCode % 2 == 0) {
+      return 2016;
+    }
+    return 2019;
   }
 
-  List<FlSpot> _generateBenchmarkSpots() {
-    return const [
-      FlSpot(0, 100),
-      FlSpot(1, 114),
-      FlSpot(2, 126),
-      FlSpot(3, 121),
-      FlSpot(4, 142),
-      FlSpot(5, 168),
-    ];
+  List<FlSpot> _generateSpots(int count, double baseMultiplier) {
+    List<FlSpot> spots = [];
+    double val = 100.0;
+    for (int i = 0; i < count; i++) {
+      spots.add(FlSpot(i.toDouble(), val));
+      val *= (1.0 + ((i % 3 == 0 ? 0.08 : 0.04) * baseMultiplier));
+    }
+    return spots;
   }
 
   @override
   Widget build(BuildContext context) {
     final settings = SettingsService();
-    final nameLower = scheme.schemeName.toLowerCase();
+    final nameLower = widget.scheme.schemeName.toLowerCase();
     final isDirect = nameLower.contains('direct');
     final isSmallMid = nameLower.contains('small') || nameLower.contains('mid');
 
@@ -54,14 +64,38 @@ class FundDetailSheet extends StatelessWidget {
     final beta = isSmallMid ? 0.98 : 0.86;
     final sharpe = isSmallMid ? 1.48 : 1.32;
     final ter = isDirect ? 0.62 : 1.45;
-    final double aumRawValue = (scheme.schemeCode % 28000 + 4500) * 10000000.0;
+    final double aumRawValue =
+        (widget.scheme.schemeCode % 28000 + 4500) * 10000000.0;
 
-    final fundSpots = _generateFundSpots(scheme.schemeCode, isSmallMid);
-    final benchmarkSpots = _generateBenchmarkSpots();
+    final launchYear = _getLaunchYear();
+    final maxYears = 2026 - launchYear;
+
+    int tenureYears;
+    if (_selectedTenure == '1Y') {
+      tenureYears = 1;
+    } else if (_selectedTenure == '3Y') {
+      tenureYears = 3;
+    } else if (_selectedTenure == '5Y') {
+      tenureYears = 5;
+    } else {
+      tenureYears = maxYears < 1 ? 1 : maxYears;
+    }
+
+    final pointCount =
+        tenureYears < 3 ? 4 : (tenureYears > 12 ? 12 : tenureYears + 1);
+    final fundSpots = _generateSpots(pointCount, isSmallMid ? 1.15 : 1.0);
+    final benchmarkSpots = _generateSpots(pointCount, 0.95);
+
     final totalGainPct =
         ((fundSpots.last.y - 100) / 100 * 100).toStringAsFixed(1);
     final benchmarkGainPct =
         ((benchmarkSpots.last.y - 100) / 100 * 100).toStringAsFixed(1);
+
+    // Calculate estimated NAV based on current NAV and selected tenure drop
+    final currentNav = (widget.scheme.nav != null && widget.scheme.nav! > 0)
+        ? widget.scheme.nav!
+        : (25.0 + (widget.scheme.schemeCode % 400));
+    final tenureNav = currentNav / (1.0 + (double.parse(totalGainPct) / 100.0));
 
     return Container(
       decoration: const BoxDecoration(
@@ -87,7 +121,7 @@ class FundDetailSheet extends StatelessWidget {
               ),
             ),
 
-            // Responsive Header (Wrap prevents pixel overflow)
+            // Responsive Header
             Wrap(
               alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
@@ -100,7 +134,7 @@ class FundDetailSheet extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        scheme.schemeName,
+                        widget.scheme.schemeName,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 13.5,
@@ -111,7 +145,7 @@ class FundDetailSheet extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'AMFI: ${scheme.schemeCode} • SEBI Regulated',
+                        'AMFI: ${widget.scheme.schemeCode} • SEBI Regulated',
                         style: const TextStyle(
                           color: Color(0xFF94A3B8),
                           fontSize: 10,
@@ -143,7 +177,7 @@ class FundDetailSheet extends StatelessWidget {
             ),
             const SizedBox(height: 10),
 
-            // Dynamic 5Y NAV Trajectory Graph Container
+            // Dynamic Tenure Trajectory Graph Container
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -154,11 +188,8 @@ class FundDetailSheet extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 8,
-                    runSpacing: 4,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
                         mainAxisSize: MainAxisSize.min,
@@ -177,43 +208,65 @@ class FundDetailSheet extends StatelessWidget {
                                   fontWeight: FontWeight.bold)),
                         ],
                       ),
+                      // Tenure Selector Tabs
                       Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                  color: Color(0xFF64748B),
-                                  shape: BoxShape.circle)),
-                          const SizedBox(width: 4),
-                          Text('Nifty 50 TRI: +$benchmarkGainPct%',
-                              style: const TextStyle(
-                                  color: Color(0xFF94A3B8), fontSize: 10)),
-                        ],
+                        children: ['1Y', '3Y', '5Y', 'ALL'].map((t) {
+                          bool isSel = _selectedTenure == t;
+                          return InkWell(
+                            onTap: () => setState(() => _selectedTenure = t),
+                            child: Container(
+                              margin: const EdgeInsets.only(left: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: isSel
+                                    ? const Color(0xFF10B981)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                t,
+                                style: TextStyle(
+                                  color: isSel ? Colors.black : Colors.grey,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 6),
+                  Text(
+                    'NAV at start of $_selectedTenure: ₹${tenureNav.toStringAsFixed(2)} | Current: ₹${currentNav.toStringAsFixed(2)}',
+                    style:
+                        const TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
+                  ),
+                  const SizedBox(height: 10),
                   SizedBox(
-                    height: 100,
+                    height: 90,
                     child: LineChart(
                       LineChartData(
                         gridData: const FlGridData(show: false),
                         titlesData: const FlTitlesData(show: false),
                         borderData: FlBorderData(show: false),
                         lineTouchData: LineTouchData(
+                          handleBuiltInTouches: true,
                           touchTooltipData: LineTouchTooltipData(
                             getTooltipItems: (touchedSpots) {
                               return touchedSpots.map((spot) {
                                 final isFund = spot.barIndex == 0;
+                                double calculatedNav =
+                                    tenureNav * (spot.y / 100.0);
                                 return LineTooltipItem(
-                                  '${isFund ? "NAV Growth" : "Benchmark"}: +${(spot.y - 100).toStringAsFixed(1)}%',
+                                  '${isFund ? "NAV" : "Bench"}: ₹${calculatedNav.toStringAsFixed(2)} (+${(spot.y - 100).toStringAsFixed(1)}%)',
                                   TextStyle(
                                     color: isFund
                                         ? const Color(0xFF10B981)
                                         : Colors.white70,
-                                    fontSize: 10,
+                                    fontSize: 9.5,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 );
@@ -227,7 +280,16 @@ class FundDetailSheet extends StatelessWidget {
                             isCurved: true,
                             color: const Color(0xFF10B981),
                             barWidth: 2.5,
-                            dotData: const FlDotData(show: false),
+                            dotData: FlDotData(
+                              show: true,
+                              getDotPainter: (spot, percent, barData, index) =>
+                                  FlDotCirclePainter(
+                                radius: 4.5,
+                                color: const Color(0xFF10B981),
+                                strokeWidth: 2,
+                                strokeColor: Colors.white,
+                              ),
+                            ),
                             belowBarData: BarAreaData(
                               show: true,
                               color: const Color(0xFF10B981)
@@ -249,12 +311,18 @@ class FundDetailSheet extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [
-                      Text('2021 (Y1)',
-                          style: TextStyle(color: Colors.grey, fontSize: 9)),
-                      Text('2023 (Y3)',
-                          style: TextStyle(color: Colors.grey, fontSize: 9)),
-                      Text('2026 (Current)',
+                    children: [
+                      Text(
+                        _selectedTenure == '1Y'
+                            ? '2025 Start'
+                            : (_selectedTenure == '3Y'
+                                ? '2023 Start'
+                                : (_selectedTenure == '5Y'
+                                    ? '2021 Start'
+                                    : '$launchYear (Launch)')),
+                        style: const TextStyle(color: Colors.grey, fontSize: 9),
+                      ),
+                      const Text('2026 (Current)',
                           style: TextStyle(
                               color: Color(0xFF10B981),
                               fontSize: 9,
@@ -340,7 +408,7 @@ class FundDetailSheet extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                 ),
                 onPressed: () {
-                  onAdd(5000);
+                  widget.onAdd(5000);
                   Navigator.pop(context);
                 },
               ),

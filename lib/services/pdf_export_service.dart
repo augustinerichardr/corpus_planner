@@ -83,8 +83,6 @@ class PdfExportService {
     final pdf = pw.Document();
 
     final sp = await SharedPreferences.getInstance();
-    final bool isProUnlocked = sp.getBool('is_pro_unlocked') ?? false;
-    final bool effectiveBranded = isInstitutionalBranded || isProUnlocked;
 
     final bool isMonteCarloActive = sp.getBool('pro_monte_carlo') ?? false;
     final bool isMultiInflationActive =
@@ -707,9 +705,6 @@ class PdfExportService {
     String advisorLogoText = 'LW',
   }) async {
     final pdf = pw.Document();
-
-    final sp = await SharedPreferences.getInstance();
-    final bool isProUnlocked = sp.getBool('is_pro_unlocked') ?? false;
 
     final effectiveCorpus = _toDouble(
       startingCorpus ?? initialCorpus ?? totalCorpus ?? corpus,

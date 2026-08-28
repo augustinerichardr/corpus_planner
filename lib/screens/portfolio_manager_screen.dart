@@ -1,5 +1,7 @@
+// lib/screens/portfolio_manager_screen.dart
 import 'package:flutter/material.dart';
 import '../models/portfolio_models.dart';
+import '../services/pro_service.dart';
 import '../services/settings_service.dart';
 import '../widgets/dashboard_app_bar.dart';
 import '../widgets/regulatory_disclaimer.dart';
@@ -7,17 +9,20 @@ import '../widgets/portfolio/net_worth_hero_card.dart';
 import '../widgets/portfolio/assets_tab_view.dart';
 import '../widgets/portfolio/debts_tab_view.dart';
 import '../widgets/portfolio/analytics_tab_view.dart';
+import 'pricing_screen.dart';
 
 class PortfolioManagerScreen extends StatefulWidget {
   final int initialTabIndex;
   final Function(double lumpSum, double monthlySip)? onSimulateInPlanner;
   final Function(double totalDebt)? onSimulateInArbitrage;
+  final VoidCallback? onMenuPressed;
 
   const PortfolioManagerScreen({
     super.key,
     this.initialTabIndex = 0,
     this.onSimulateInPlanner,
     this.onSimulateInArbitrage,
+    this.onMenuPressed,
   });
 
   @override
@@ -29,6 +34,7 @@ class _PortfolioManagerScreenState extends State<PortfolioManagerScreen>
   late TabController _tabController;
   List<AssetItem> _assets = PortfolioSampleData.getDefaultAssets();
   final List<DebtItem> _debts = PortfolioSampleData.getDefaultDebts();
+  bool _isPro = false;
 
   @override
   void initState() {
@@ -38,6 +44,8 @@ class _PortfolioManagerScreenState extends State<PortfolioManagerScreen>
       vsync: this,
       initialIndex: widget.initialTabIndex.clamp(0, 2),
     );
+    _isPro = ProService.isProNotifier.value;
+    ProService.isProNotifier.addListener(_onProStatusChanged);
   }
 
   @override
@@ -50,8 +58,19 @@ class _PortfolioManagerScreenState extends State<PortfolioManagerScreen>
 
   @override
   void dispose() {
+    ProService.isProNotifier.removeListener(_onProStatusChanged);
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _onProStatusChanged() {
+    if (mounted) {
+      setState(() => _isPro = ProService.isProNotifier.value);
+    }
+  }
+
+  Future<void> _openPricingModal() async {
+    await PricingModal.show(context);
   }
 
   double get _totalAssets =>
@@ -433,8 +452,12 @@ class _PortfolioManagerScreenState extends State<PortfolioManagerScreen>
 
         return Scaffold(
           backgroundColor: const Color(0xFF0F172A),
-          appBar: const DashboardAppBar(
-              title: 'Net Worth Portfolio & Balance Sheet'),
+          appBar: DashboardAppBar(
+            title: 'Net Worth Portfolio & Balance Sheet',
+            isPro: _isPro,
+            onUpgradeTap: _openPricingModal,
+            onMenuPressed: widget.onMenuPressed,
+          ),
           body: Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
             child: Column(
