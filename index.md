@@ -3,7 +3,7 @@
 **Effective Date:** August 28, 2026  
 **App Name:** CorpusIQ Planner  
 **Developer / Creator:** R Augustine Richard  
-**Contact Location:** Coimbatore, Tamil Nadu, India  
+**Contact Location:** India  
 
 ---
 
