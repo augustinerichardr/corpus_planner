@@ -243,8 +243,9 @@ class _MutualFundsScreenState extends State<MutualFundsScreen> {
                               ))
                           .toList(),
                       onChanged: (val) {
-                        if (val != null)
+                        if (val != null) {
                           setState(() => _selectedCategory = val);
+                        }
                       },
                     ),
                   ),
