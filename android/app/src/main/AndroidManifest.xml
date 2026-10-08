@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for Google Play In-App Purchases & Subscriptions -->
+    <uses-permission android:name="com.android.vending.BILLING" />
+
     <!-- Network access for live AMFI Mutual Funds API, webhooks, and PDF sync -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
